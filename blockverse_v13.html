@@ -1,0 +1,2442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BlockVerse - Classic Hub</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
+<style>
+  :root{
+    /* Classic 2015 Theme Variables */
+    --roblox-blue: #0074BD; 
+    --roblox-bg: #E3E3E3;
+    --roblox-panel: #FFFFFF;
+    --roblox-border: #C3C3C3;
+    --roblox-text: #333333;
+    --roblox-link: #0055b3;
+    --roblox-green: #02b757;
+    --roblox-red: #D22B2B;
+    --muted: #777777;
+    --gold: #F5A623;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:Arial, Helvetica, sans-serif;background:var(--roblox-bg);color:var(--roblox-text);}
+  
+  .topbar{background:var(--roblox-blue);display:flex;align-items:center;padding:10px 20px;gap:20px;position:sticky;top:0;z-index:50;}
+  .logo{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;}
+  .logo-text{font-weight:900;font-size:24px;color:#fff;letter-spacing:-0.5px;}
+  
+  .searchwrap{flex:1;display:flex;max-width:500px;background:#fff;border:1px solid #00568c;border-radius:2px;overflow:hidden;}
+  .searchwrap input{flex:1;border:none;padding:8px 12px;font-size:14px;outline:none;}
+  .searchwrap button{background:#fff;border:none;border-left:1px solid #ccc;color:var(--roblox-blue);padding:0 16px;cursor:pointer;font-weight:bold;}
+  
+  .topbar-right{display:flex;align-items:center;gap:15px;color:#fff;font-size:14px;font-weight:bold;}
+  .avatar-mini{width:36px;height:36px;border-radius:4px;background:linear-gradient(160deg,#8fb9d6,#4a7ea8);border:1px solid #00568c;}
+  
+  .navtabs{display:flex;background:var(--roblox-panel);border-bottom:1px solid var(--roblox-border);padding:0 20px;gap:5px;overflow-x:auto;box-shadow:0 1px 2px rgba(0,0,0,0.05);}
+  .navtabs button{background:transparent;border:none;color:var(--muted);padding:14px 20px;font-weight:bold;font-size:15px;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;}
+  .navtabs button:hover{color:var(--roblox-text);}
+  .navtabs button.active{color:var(--roblox-text);border-bottom:3px solid var(--roblox-blue);}
+  
+  main{max-width:1024px;margin:20px auto;padding:0 14px 60px;}
+  .page{display:none;}
+  .page.active{display:block;}
+  h2.section-title{font-size:20px;font-weight:bold;margin:0 0 15px;color:var(--roblox-text);}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:15px;}
+  
+  /* Classic Square Game Cards */
+  .card{background:var(--roblox-panel);border:1px solid var(--roblox-border);border-radius:3px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;box-shadow:0 1px 3px rgba(0,0,0,0.05);}
+  .card:hover{box-shadow:0 2px 6px rgba(0,0,0,0.15);}
+  .thumb{aspect-ratio:1;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;border-bottom:1px solid var(--roblox-border);}
+  .card .info{padding:10px;}
+  .card .title{font-size:14px;font-weight:bold;line-height:1.2;margin-bottom:6px;color:var(--roblox-link);text-overflow:ellipsis;overflow:hidden;white-space:nowrap;}
+  .card .stats{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;}
+  
+  .btn-delete{background:var(--roblox-red);color:white;border:none;padding:4px 8px;border-radius:2px;font-size:11px;cursor:pointer;font-weight:bold;}
+  .btn-delete:hover{background:#b02222;}
+
+  /* Sponge thumb */
+  .thumb-sponge{background:linear-gradient(180deg, #2B9CD8 0%, #1B6FA8 100%);position:relative;}
+  .thumb-sponge .sq{position:absolute;background:#F5D327;border:1px solid #D9A62B;border-radius:2px;}
+  
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:12px 24px;border-radius:4px;font-size:14px;font-weight:bold;box-shadow:0 4px 14px rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .2s;z-index:9999;}
+  .toast.show{opacity:1;}
+
+  /* ---------- PLAYER (3D game) OVERLAY ---------- */
+  #playerOverlay{position:fixed;inset:0;background:#000;display:none;z-index:500;flex-direction:column;}
+  #playerOverlay.active{display:flex;}
+  #gameCanvasWrap{flex:1;position:relative;touch-action:none;}
+  #gameCanvasWrap canvas{display:block;width:100%;height:100%;outline:none;}
+  .game-hud{position:absolute;top:15px;left:15px;right:15px;display:flex;justify-content:space-between;pointer-events:none;font-weight:bold;color:#fff;text-shadow:1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;}
+  
+  .hud-pill{background:rgba(0,0,0,.5);padding:8px 14px;border-radius:4px;font-size:16px;border:2px solid rgba(255,255,255,0.2);}
+  .game-topbar{display:flex;align-items:center;justify-content:space-between;padding:10px 15px;background:#222;color:#fff;border-bottom:1px solid #444;}
+  .game-topbar .close-btn{background:var(--roblox-red);border:none;color:#fff;padding:6px 14px;border-radius:2px;font-weight:bold;cursor:pointer;}
+  .crosshair{position:absolute;top:50%;left:50%;width:4px;height:4px;background:#fff;transform:translate(-50%,-50%);pointer-events:none;}
+  
+  /* Mobile Virtual Joystick & Jump */
+  #joystickZone{display:none;position:absolute;bottom:30px;left:30px;width:130px;height:130px;background:rgba(255,255,255,0.15);border-radius:50%;border:2px solid rgba(255,255,255,0.3);touch-action:none;}
+  #joystickKnob{position:absolute;top:40px;left:40px;width:50px;height:50px;background:rgba(255,255,255,0.6);border-radius:50%;pointer-events:none;box-shadow:0 2px 5px rgba(0,0,0,0.3);}
+  .jump-btn{position:absolute;bottom:40px;right:40px;width:80px;height:80px;border-radius:50%;background:rgba(255,255,255,0.2);border:2px solid rgba(255,255,255,0.4);color:#fff;font-weight:bold;font-size:16px;display:none;align-items:center;justify-content:center;user-select:none;touch-action:none;}
+
+  .win-banner{position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.85);color:#fff;padding:30px 50px;border-radius:4px;text-align:center;display:none;z-index:20;border:2px solid var(--gold);}
+  .win-banner h2{margin:0 0 10px;color:var(--gold);}
+  .win-banner button{margin-top:15px;background:var(--roblox-green);border:none;color:#fff;padding:10px 24px;border-radius:2px;font-weight:bold;cursor:pointer;font-size:16px;}
+  
+  .chat-panel{position:absolute;top:60px;left:15px;width:300px;max-height:200px;display:flex;flex-direction:column; z-index: 100;}
+  .chat-log{flex:1;overflow-y:auto;padding:8px;font-size:14px;color:#fff;text-shadow:1px 1px 0 #000;background:rgba(0,0,0,0.3);border-radius:4px;margin-bottom:8px;}
+  .chat-log div{margin-bottom:4px;}
+  .chat-input-row{display:flex;}
+  .chat-input-row input{flex:1;background:rgba(0,0,0,0.6);border:1px solid #666;color:#fff;padding:8px 10px;font-size:14px;outline:none;border-radius:2px 0 0 2px;pointer-events:auto;}
+  .chat-input-row button{background:#555;border:1px solid #666;border-left:none;color:#fff;padding:0 15px;font-weight:bold;cursor:pointer;border-radius:0 2px 2px 0;pointer-events:auto;}
+  .chat-panel.hidden{display:none;}
+  #chatToggleBtn{position:absolute;top:15px;left:15px;z-index:110;background:rgba(0,0,0,.55);color:#fff;border:2px solid rgba(255,255,255,0.25);border-radius:4px;padding:8px 12px;font-weight:bold;font-size:13px;cursor:pointer;pointer-events:auto;}
+  #chatToggleBtn:hover{background:rgba(0,0,0,.75);}
+
+  /* DOM 3D overlay layer - chat bubbles + accessory loading bars, positioned every frame */
+  #dom3dLayer{position:absolute;inset:0;pointer-events:none;z-index:60;overflow:hidden;}
+  .chat-bubble{position:absolute;transform:translate(-50%,-100%);background:#fff;color:#222;padding:6px 10px;border-radius:12px;font-size:13px;font-weight:bold;max-width:180px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,.4);border:1px solid #ccc;opacity:1;transition:opacity .6s ease;white-space:normal;word-break:break-word;}
+  .chat-bubble:after{content:'';position:absolute;left:50%;top:100%;transform:translateX(-50%);border:6px solid transparent;border-top-color:#fff;}
+  .chat-bubble.fadeout{opacity:0;}
+  .accessory-loadbar{position:absolute;transform:translate(-50%,-100%);width:70px;height:10px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.4);border-radius:5px;overflow:hidden;}
+  .accessory-loadbar .fill{height:100%;width:20%;background:var(--roblox-green);animation:loadbarpulse 1s infinite ease-in-out;}
+  @keyframes loadbarpulse{0%{width:15%;margin-left:0%;}50%{width:60%;margin-left:20%;}100%{width:15%;margin-left:85%;}}
+
+  /* ---------- CREATE PAGE: choice cards ---------- */
+  .create-choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;max-width:700px;}
+  .create-choice-card{background:var(--roblox-panel);border:1px solid var(--roblox-border);padding:25px 20px;text-align:center;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.05);}
+  .create-choice-card:hover{box-shadow:0 3px 10px rgba(0,0,0,.18);}
+  .create-choice-card .cc-icon{font-size:42px;margin-bottom:10px;}
+  .create-choice-card h3{margin:0 0 8px;color:var(--roblox-text);}
+  .create-choice-card p{margin:0;color:var(--muted);font-size:13px;line-height:1.4;}
+
+  /* ---------- CATALOG SHOP ---------- */
+  .cat-price{color:var(--roblox-green);font-weight:bold;}
+  .cat-buy-btn{background:var(--roblox-green);color:#fff;border:none;padding:5px 10px;border-radius:2px;font-size:11px;font-weight:bold;cursor:pointer;}
+  .cat-buy-btn:hover{background:#019245;}
+  .cat-buy-btn.owned{background:#888;cursor:default;}
+  .cat-buy-btn.equipped{background:var(--roblox-blue);}
+  .thumb-catalog{background:#f2f2f2;}
+  .thumb-catalog img{width:100%;height:100%;object-fit:contain;}
+  .thumb-catalog .acc-placeholder{font-size:46px;}
+
+  /* ---------- CATALOG STUDIO ---------- */
+  #catalogStudioOverlay{position:fixed;inset:0;background:#222;display:none;z-index:500;flex-direction:column;}
+  #catalogStudioOverlay.active{display:flex;}
+  .catstudio-body{flex:1;display:flex;overflow:hidden;}
+  .catstudio-left{width:230px;background:#f5f5f5;border-right:1px solid #ccc;padding:15px;overflow-y:auto;}
+  .catstudio-left h4{color:#555;font-size:12px;margin:14px 0 8px;}
+  .cat-tab-row{display:flex;gap:5px;margin-bottom:10px;}
+  .cat-tab-btn{flex:1;background:#fff;border:1px solid #ccc;padding:8px 4px;font-size:12px;font-weight:bold;cursor:pointer;}
+  .cat-tab-btn.active{background:var(--roblox-blue);color:#fff;border-color:var(--roblox-blue);}
+  .slot-row{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:10px;}
+  .slot-btn{background:#fff;border:1px solid #ccc;padding:6px 4px;font-size:11px;cursor:pointer;}
+  .slot-btn.active{background:var(--roblox-green);color:#fff;border-color:var(--roblox-green);}
+  .catstudio-left input[type=text]{width:100%;border:1px solid #ccc;padding:6px;font-size:12px;margin-bottom:8px;}
+  .catstudio-left button.load-btn{width:100%;background:var(--roblox-blue);color:#fff;border:none;padding:7px;font-size:12px;font-weight:bold;cursor:pointer;margin-bottom:10px;}
+  .arrow-pad{display:grid;grid-template-columns:repeat(3,32px);grid-template-rows:repeat(3,32px);gap:3px;justify-content:center;margin-bottom:10px;}
+  .arrow-pad button{background:#fff;border:1px solid #aaa;cursor:pointer;font-size:14px;}
+  .arrow-pad button:hover{background:#eef;}
+  .catstudio-center{flex:1;display:flex;flex-direction:column;position:relative;background:#333;}
+  .catstudio-viewports{flex:1;display:flex;}
+  #catStudio3D{flex:1;position:relative;}
+  #catStudio3D canvas{display:block;width:100%;height:100%;}
+  #catStudio2DWrap{width:280px;background:#111;border-left:1px solid #444;display:flex;align-items:center;justify-content:center;position:relative;}
+  #catStudio2DCanvas{background:repeating-conic-gradient(#e8e8e8 0% 25%, #fff 0% 50%) 50% / 20px 20px;border:1px solid #555;cursor:grab;touch-action:none;}
+  .catstudio-hint{position:absolute;bottom:10px;left:10px;color:#ccc;font-size:11px;background:rgba(0,0,0,.5);padding:4px 8px;border-radius:3px;}
+  .catstudio-right{width:220px;background:#f5f5f5;border-left:1px solid #ccc;padding:15px;overflow-y:auto;}
+
+  /* ---------- AVATAR PAGE: locked colors + inventory ---------- */
+  .locked-note{background:#fff8e1;border:1px solid #F5A623;color:#7a5b00;font-size:12px;padding:10px;border-radius:3px;margin-bottom:14px;}
+  .inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;margin-top:8px;}
+  .inv-item{background:#fff;border:1px solid var(--roblox-border);padding:6px;text-align:center;font-size:11px;cursor:pointer;}
+  .inv-item.equipped{border:2px solid var(--roblox-green);}
+  .inv-item img{width:100%;height:50px;object-fit:contain;}
+  .inv-item .acc-ico{font-size:30px;height:50px;display:flex;align-items:center;justify-content:center;}
+
+  /* ---------- STUDIO EDITOR ---------- */
+  #studioOverlay{position:fixed;inset:0;background:#222;display:none;z-index:500;flex-direction:column;}
+  #studioOverlay.active{display:flex;}
+  .studio-topbar{background:#eee;display:flex;align-items:center;gap:10px;padding:8px 15px;border-bottom:1px solid #ccc;}
+  .studio-topbar .title{color:#333;font-weight:bold;font-size:16px;margin-right:auto;}
+  .studio-btn{background:#fff;color:#333;border:1px solid #aaa;padding:6px 12px;border-radius:2px;font-size:13px;cursor:pointer;}
+  .studio-btn:hover{background:#e0e0e0;}
+  .studio-btn.active{background:#ddd;border-color:#888;}
+  .studio-btn.publish{background:var(--roblox-green);border-color:#019245;color:#fff;font-weight:bold;}
+  .studio-btn.publish:hover{background:#019245;}
+  .studio-btn.close-editor{background:var(--roblox-red);color:white;border:none;}
+  .studio-body{flex:1;display:flex;overflow:hidden;}
+  
+  .studio-tools{width:180px;background:#f5f5f5;border-right:1px solid #ccc;padding:15px 10px;overflow-y:auto;}
+  .studio-tools h4{color:#555;font-size:12px;margin:15px 0 8px;}
+  .tool-btn{width:100%;text-align:left;background:#fff;color:#333;border:1px solid #ccc;padding:8px 10px;font-size:13px;margin-bottom:6px;cursor:pointer;}
+  .tool-btn:hover{background:#eef;}
+  
+  .studio-viewport{flex:1;position:relative;outline:none;}
+  .studio-viewport canvas{display:block;width:100%;height:100%;}
+  .studio-props{width:260px;background:#f5f5f5;border-left:1px solid #ccc;padding:15px;overflow-y:auto;font-size:13px;}
+  .prop-row{margin-bottom:12px;}
+  .prop-row label{display:block;font-size:12px;color:#555;margin-bottom:4px;font-weight:bold;}
+  
+  .prop-row input[type=number], .prop-row input[type=text]{width:100%;background:#fff;border:1px solid #ccc;padding:6px;font-size:13px;}
+  .prop-row input[type=color]{width:100%;height:30px;border:1px solid #ccc;padding:0;cursor:pointer;}
+  .xyzrow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;}
+  
+  #publishModal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:600;}
+  #publishModal.active{display:flex;}
+  .modal-box{background:#fff;border-radius:4px;padding:25px;width:400px;box-shadow:0 4px 15px rgba(0,0,0,.3);}
+  .modal-box h3{margin:0 0 15px;font-size:22px;}
+  .modal-box label{display:block;font-size:13px;font-weight:bold;margin:12px 0 6px;}
+  .modal-box input,.modal-box textarea{width:100%;border:1px solid #ccc;padding:10px;font-family:inherit;font-size:14px;}
+  .modal-actions{display:flex;gap:10px;margin-top:20px;}
+  .modal-actions button{flex:1;padding:10px;border-radius:2px;border:none;font-weight:bold;cursor:pointer;font-size:14px;}
+  .modal-actions .cancel{background:#eee;color:#333;border:1px solid #ccc;}
+  .modal-actions .confirm{background:var(--roblox-blue);color:#fff;}
+
+  /* Custom input styles for Profile page */
+  .profile-settings { margin-top: 15px; }
+  .profile-settings input { padding: 8px 12px; border: 1px solid var(--roblox-border); border-radius: 2px; font-size: 14px; width: 220px; }
+  .profile-settings button { padding: 8px 16px; background: var(--roblox-blue); color: #fff; border: none; border-radius: 2px; font-weight: bold; cursor: pointer; }
+
+  /* ---- GAME LOADING SCREEN ---- */
+  #gameLoadingScreen{position:fixed;inset:0;background:#111;z-index:9000;display:none;flex-direction:column;align-items:center;justify-content:center;transition:opacity 0.8s ease;}
+  #gameLoadingScreen.active{display:flex;}
+  #gameLoadingScreen.fade-out{opacity:0;pointer-events:none;}
+  #loadingGameIcon{width:120px;height:120px;background:linear-gradient(135deg,#eee,#ccc);border:3px solid #444;border-radius:8px;object-fit:cover;margin-bottom:16px;}
+  #loadingGameName{color:#fff;font-size:26px;font-weight:bold;margin-bottom:6px;text-align:center;}
+  #loadingGameCreator{color:#aaa;font-size:14px;margin-bottom:30px;}
+  #loadingRobloxBox{position:absolute;bottom:30px;right:30px;width:40px;height:40px;border:4px solid #0074BD;border-top:4px solid transparent;border-radius:4px;animation:rboxSpin 1.2s linear infinite;}
+  @keyframes rboxSpin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}
+
+  /* ---- GAME TYPE MODAL ---- */
+  #gameTypeModal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:600;}
+  #gameTypeModal.active{display:flex;}
+  .game-type-box{background:#fff;border-radius:4px;padding:28px;width:460px;box-shadow:0 4px 20px rgba(0,0,0,.4);}
+  .game-type-box h3{margin:0 0 18px;font-size:20px;text-align:center;}
+  .game-type-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px;}
+  .game-type-card{border:2px solid #ccc;border-radius:4px;padding:14px 8px;text-align:center;cursor:pointer;transition:all .15s;}
+  .game-type-card:hover{border-color:var(--roblox-blue);background:#f0f6ff;}
+  .game-type-card.selected{border-color:var(--roblox-blue);background:#e0f0ff;}
+  .game-type-card .gt-icon{font-size:32px;margin-bottom:8px;}
+  .game-type-card h4{margin:0 0 4px;font-size:13px;}
+  .game-type-card p{margin:0;font-size:11px;color:#777;}
+
+  /* ---- GLB UPLOAD ON PART ---- */
+  #glbPartModal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:650;}
+  #glbPartModal.active{display:flex;}
+  .glb-modal-box{background:#fff;border-radius:4px;padding:22px;width:380px;}
+  .glb-modal-box h3{margin:0 0 12px;font-size:18px;}
+
+  /* ---- ACCESSORY SIZE SLIDER ---- */
+  .acc-size-row{margin-top:10px;}
+  .acc-size-row label{display:block;font-size:12px;color:#555;font-weight:bold;margin-bottom:4px;}
+  .acc-size-row input[type=range]{width:100%;cursor:pointer;}
+
+  /* ---- CAT FACE CANVAS INFINITY ---- */
+  #catStudio2DWrap{width:280px;background:#111;border-left:1px solid #444;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;}
+
+  /* ---- AUDIO STUDIO PANEL ---- */
+  .audio-panel{background:#f5f5f5;border-top:1px solid #ccc;padding:10px 15px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .audio-panel label{font-size:12px;font-weight:bold;color:#555;}
+  .audio-panel input[type=text]{flex:1;min-width:180px;border:1px solid #ccc;padding:5px 8px;font-size:12px;}
+  .audio-panel button{background:var(--roblox-blue);color:#fff;border:none;padding:6px 12px;font-size:12px;font-weight:bold;cursor:pointer;border-radius:2px;}
+  .audio-panel .audio-status{font-size:11px;color:#777;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo" onclick="window.showPage('home')">
+    <div class="logo-text">BlockVerse</div>
+  </div>
+  <div class="searchwrap">
+    <input id="searchInput" placeholder="Search games, avatars..." />
+    <button onclick="window.doSearch()">Search</button>
+  </div>
+  <div class="topbar-right">
+    <div style="display:flex;align-items:center;gap:5px;cursor:pointer">ROBUX: <span id="robuxCount">2,450</span></div>
+    <div class="avatar-mini"></div>
+  </div>
+</div>
+
+<div class="navtabs">
+  <button class="tab-btn active" data-page="home" onclick="window.showPage('home')">Games</button>
+  <button class="tab-btn" data-page="create" onclick="window.showPage('create')">Develop</button>
+  <button class="tab-btn" data-page="catalog" onclick="window.showPage('catalog')">Catalog</button>
+  <button class="tab-btn" data-page="avatar" onclick="window.showPage('avatar')">Avatar</button>
+  <button class="tab-btn" data-page="profile" onclick="window.showPage('profile')">Profile</button>
+</div>
+
+<main>
+  <section id="home" class="page active">
+    <h2 class="section-title">Popular Creations</h2>
+    <div class="grid" id="homeGrid"></div>
+    <br><br>
+    <h2 class="section-title">Community Games (Cloud Sync)</h2>
+    <p style="color:var(--muted);font-size:14px;margin-top:-10px" id="communityNote">Loading connected games...</p>
+    <div class="grid" id="communityGrid"></div>
+  </section>
+
+  <section id="create" class="page">
+    <h2 class="section-title">Develop</h2>
+    <div class="create-choice-grid">
+      <div class="create-choice-card" onclick="window.openGameTypeModal()">
+        <div class="cc-icon">🧱</div>
+        <h3>Create a Roblox Game</h3>
+        <p>Choose a game type: Obby, Survival the Killer, or Featured. Each comes with unique tools and settings to build your experience.</p>
+      </div>
+      <div class="create-choice-card" onclick="window.openCatalogStudio()">
+        <div class="cc-icon">👕</div>
+        <h3>Create a Catalog Item</h3>
+        <p>Design a Face, Accessory, or Clothing item, price it, and publish it to the Catalog so anyone can buy and wear it.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="catalog" class="page">
+    <h2 class="section-title">Catalog <span style="font-weight:normal;color:var(--muted);font-size:13px">— items made by the community</span></h2>
+    <p style="color:var(--muted);font-size:14px;margin-top:-10px" id="catalogNote">Loading catalog...</p>
+    <div class="grid" id="catalogGrid"></div>
+  </section>
+
+  <section id="avatar" class="page">
+    <h2 class="section-title">Avatar Editor</h2>
+    <div style="display:grid;grid-template-columns:300px 1fr;gap:20px" id="avatarLayoutWrap">
+      <div id="avatarPreviewContainer" style="background:#fff;border:1px solid var(--roblox-border);height:350px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">
+        <p style="color:var(--muted); font-size:12px; position:absolute; top: 10px; text-align:center; width:100%; z-index:10;">Loading 3D GLB...</p>
+      </div>
+      <div style="background:var(--roblox-panel);border:1px solid var(--roblox-border);padding:20px">
+        <div class="locked-note">🔒 Skin &amp; color customization is disabled — every player uses the standard BlockVerse color. Head to the <b>Catalog</b> to customize your look with Faces, Clothing and Accessories instead!</div>
+        <h4 style="margin:0 0 4px;color:#555;font-size:13px">My Items</h4>
+        <p style="color:var(--muted);font-size:12px;margin:0 0 4px">Tap an owned item to equip / unequip it.</p>
+        <div class="inv-grid" id="inventoryGrid"><p style="color:var(--muted);font-size:12px;grid-column:1/-1">You don't own any catalog items yet. Visit the Catalog tab!</p></div>
+        <button class="studio-btn publish" style="margin-top:14px" onclick="window.saveAvatar()">Save Avatar</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="profile" class="page">
+    <div style="background:var(--roblox-panel);border:1px solid var(--roblox-border);padding:20px;display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-bottom:30px">
+      <div class="profile-big-avatar" style="width:120px;height:120px;background:linear-gradient(160deg,#8fb9d6,#4a7ea8);border:2px solid #ccc;flex-shrink:0"></div>
+      <div>
+        <h1 style="margin:0 0 5px;font-size:28px" id="profileUsername">Loading...</h1>
+        <p style="margin:0;color:var(--muted);font-size:15px">Joined recently &nbsp;•&nbsp; Online</p>
+        
+        <div class="profile-settings">
+           <label style="display:block; font-size:12px; color:var(--muted); font-weight:bold; margin-bottom:4px;">Change Cloud Username</label>
+           <input type="text" id="nameInput" placeholder="New Username" maxlength="15">
+           <button onclick="window.changeUsername()">Update Name</button>
+        </div>
+      </div>
+    </div>
+    <h2 class="section-title">My Cloud Creations</h2>
+    <p style="color:var(--muted);font-size:14px;display:none" id="myGamesEmpty">You haven't created any games yet.</p>
+    <div class="grid" id="myGamesGrid"></div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<!-- GAME LOADING SCREEN -->
+<div id="gameLoadingScreen">
+  <img id="loadingGameIcon" src="" alt="Game Icon">
+  <div id="loadingGameName">Loading...</div>
+  <div id="loadingGameCreator">By Creator</div>
+  <div id="loadingRobloxBox"></div>
+</div>
+
+<div id="playerOverlay">
+  <div class="game-topbar">
+    <span id="playerGameTitle" style="font-weight:bold;font-size:18px">Loading...</span>
+    <button class="close-btn" onclick="window.closePlayer()">Leave Game</button>
+  </div>
+  <div id="gameCanvasWrap">
+    <div class="game-hud">
+      <div class="hud-pill">Checkpoint: <span id="hudCheckpoint">0</span>/<span id="hudCheckpointTotal">0</span></div>
+      <div class="hud-pill">Players: <span id="hudPlayers">1</span></div>
+      <div class="hud-pill"><span id="hudTimer">0.0s</span></div>
+    </div>
+    <div class="crosshair"></div>
+    
+    <div id="joystickZone"><div id="joystickKnob"></div></div>
+    <div class="jump-btn" id="jumpBtn">JUMP</div>
+    
+    <div class="win-banner" id="winBanner">
+      <h2>🏆 Course Complete!</h2>
+      <p id="winTime" style="font-size:18px">Time: 0s</p>
+      <button onclick="window.restartCourse()">Play Again</button>
+      <button onclick="window.closePlayer()" style="background:#555;margin-left:10px">Menu</button>
+    </div>
+
+    <!-- Chat toggle -->
+    <button id="chatToggleBtn" onclick="window.toggleChat()">💬 Hide Chat</button>
+
+    <!-- Chat Panel -->
+    <div class="chat-panel" id="chatPanel">
+      <div class="chat-log" id="chatLog"><i>Loading chat...</i></div>
+      <div class="chat-input-row" id="chatInputArea" style="pointer-events: auto;">
+        <input id="chatInput" placeholder="Chat globally here..." maxlength="120" />
+        <button onclick="window.sendChat()">Send</button>
+      </div>
+    </div>
+
+    <!-- Chat bubbles + accessory loading bars render here, positioned every frame -->
+    <div id="dom3dLayer"></div>
+  </div>
+</div>
+
+<audio id="deathSoundEl" src="https://www.myinstants.com/media/sounds/roblox-death-sound_ytkBL7X.mp3" preload="auto"></audio>
+<audio id="jumpSoundEl" src="https://www.myinstants.com/media/sounds/action_jump.mp3" preload="auto"></audio>
+
+<div id="studioOverlay">
+  <div class="studio-topbar">
+    <div class="title">BlockVerse Studio</div>
+    <span style="font-size:12px;color:#666;margin-right:20px;">Right-Click Drag: Look | WASD+QE: Fly</span>
+    <button class="studio-btn" onclick="window.studioAction('rotate')" id="btn-rotate">Rotate</button>
+    <button class="studio-btn" onclick="window.studioAction('delete')">Delete</button>
+    <button class="studio-btn" onclick="window.studioAction('duplicate')">Duplicate</button>
+    <button class="studio-btn publish" onclick="window.openPublishModal()">Publish to Cloud</button>
+    <button class="studio-btn close-editor" onclick="window.closeStudio()">Close</button>
+  </div>
+  <div class="studio-body">
+    <div class="studio-tools" id="studioToolsPanel">
+      <h4>Insert</h4>
+      <button class="tool-btn" onclick="window.insertPart('block')">🧱 Part (Block)</button>
+      <button class="tool-btn" onclick="window.insertPart('kill')">☠️ Kill Part (Red)</button>
+      <button class="tool-btn" onclick="window.insertPart('checkpoint')">🏁 Checkpoint</button>
+      <button class="tool-btn" onclick="window.insertPart('spawn')">📍 Spawn Point</button>
+      <button class="tool-btn" onclick="window.insertPart('win')">🏆 Win Part</button>
+      <button class="tool-btn" onclick="window.insertPart('text')">🔤 Text Block</button>
+      <!-- Survival tools (hidden by default) -->
+      <div id="killerTools" style="display:none">
+        <hr style="border:0;border-top:1px solid #ccc;margin:10px 0">
+        <h4 style="color:#c0392b">Killer Toolbox</h4>
+        <button class="tool-btn" style="background:#fff0f0" onclick="window.insertKillerNPC('jeff','https://raw.githubusercontent.com/Freerobuxplz/FreddyHar/main/roblox_jeff_the_killer_r6.glb')">🔪 Jeff the Killer</button>
+        <button class="tool-btn" style="background:#fff0f0" onclick="window.insertKillerNPC('siren','https://raw.githubusercontent.com/Freerobuxplz/FreddyHar/main/roblox_classic_siren_head.glb')">📡 Siren Head</button>
+      </div>
+      <!-- Featured extras (hidden by default) -->
+      <div id="featuredTools" style="display:none">
+        <hr style="border:0;border-top:1px solid #ccc;margin:10px 0">
+        <h4 style="color:#8e44ad">Featured Extras</h4>
+        <button class="tool-btn" style="background:#f9f0ff" onclick="window.insertKillerNPC('jeff','https://raw.githubusercontent.com/Freerobuxplz/FreddyHar/main/roblox_jeff_the_killer_r6.glb')">🔪 Jeff the Killer</button>
+        <button class="tool-btn" style="background:#f9f0ff" onclick="window.insertKillerNPC('siren','https://raw.githubusercontent.com/Freerobuxplz/FreddyHar/main/roblox_classic_siren_head.glb')">📡 Siren Head</button>
+        <button class="tool-btn" style="background:#f0f8ff" onclick="window.insertCar('mcqueen','https://raw.githubusercontent.com/Freerobuxplz/FreddyHar/main/roblox_lightning_mcqueen_companion.glb')">🚗 Lightning McQueen</button>
+      </div>
+      <!-- GLB on Part -->
+      <hr style="border:0;border-top:1px solid #ccc;margin:15px 0">
+      <button class="tool-btn" onclick="window.openGlbPartModal()">🔗 Load GLB on Part</button>
+      <button class="tool-btn" onclick="window.toggleAnchor()">⚓ Toggle Anchor</button>
+      <button class="tool-btn" onclick="window.resetBaseplate()">🔲 Clear Map</button>
+    </div>
+    <div class="studio-viewport" id="studioViewport" tabindex="0"></div>
+    <div class="studio-props" id="studioProps">
+      <h4 style="margin-top:0;color:#555">Properties</h4>
+      <div id="propsEmpty" style="color:#777;font-size:12px">Select a part to edit.</div>
+      <div id="propsForm" style="display:none">
+        <div class="prop-row"><label>Position (X, Y, Z)</label><div class="xyzrow"><input type="number" id="propX" step="0.5" onchange="window.applyPropChange()"><input type="number" id="propY" step="0.5" onchange="window.applyPropChange()"><input type="number" id="propZ" step="0.5" onchange="window.applyPropChange()"></div></div>
+        <div class="prop-row"><label>Size (X, Y, Z)</label><div class="xyzrow"><input type="number" id="sizeX" step="0.5" min="0.5" onchange="window.applyPropChange()"><input type="number" id="sizeY" step="0.5" min="0.5" onchange="window.applyPropChange()"><input type="number" id="sizeZ" step="0.5" min="0.5" onchange="window.applyPropChange()"></div></div>
+        <div class="prop-row"><label>Color</label><input type="color" id="propColor" onchange="window.applyPropChange()"></div>
+        <div class="prop-row" id="textRow" style="display:none"><label>Text</label><input type="text" id="propText" onchange="window.applyPropChange()"></div>
+      </div>
+    </div>
+  </div>
+  <!-- Audio Panel -->
+  <div class="audio-panel">
+    <label>🎵 Background Music (GitHub .mp3 raw URL):</label>
+    <input type="text" id="studioBgMusicUrl" placeholder="https://raw.githubusercontent.com/.../.mp3">
+    <button onclick="window.loadStudioBgMusic()">Load &amp; Set</button>
+    <button onclick="window.stopStudioBgMusic()" style="background:#888;">Stop</button>
+    <span class="audio-status" id="audioStatus">No music loaded.</span>
+  </div>
+</div>
+
+<div id="publishModal">
+  <div class="modal-box">
+    <h3>Publish to Cloud</h3>
+    <label>Game Name</label>
+    <input type="text" id="pubName" placeholder="My Awesome Obby" maxlength="40">
+    <label>Description</label>
+    <textarea id="pubDesc" placeholder="Describe your game..." maxlength="200" style="resize:vertical;min-height:60px"></textarea>
+    <label>Thumbnail Image URL (Optional)</label>
+    <input type="text" id="pubThumb" placeholder="https://...">
+    <div class="modal-actions">
+      <button class="cancel" onclick="window.closePublishModal()">Cancel</button>
+      <button class="confirm" onclick="window.confirmPublish()">Publish Game</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= CATALOG ITEM STUDIO ================= -->
+<div id="catalogStudioOverlay">
+  <div class="studio-topbar">
+    <div class="title">Catalog Item Studio</div>
+    <span style="font-size:12px;color:#666;margin-right:20px;">Drag on the model to rotate it</span>
+    <button class="studio-btn publish" onclick="window.openCatalogPublishModal()">Save &amp; Publish</button>
+    <button class="studio-btn close-editor" onclick="window.closeCatalogStudio()">Close</button>
+  </div>
+  <div class="catstudio-body">
+    <div class="catstudio-left">
+      <h4>Category</h4>
+      <div class="cat-tab-row">
+        <button class="cat-tab-btn active" data-cat="face" onclick="window.setCatCategory('face')">Face</button>
+        <button class="cat-tab-btn" data-cat="accessory" onclick="window.setCatCategory('accessory')">Accessory</button>
+        <button class="cat-tab-btn" data-cat="clothing" onclick="window.setCatCategory('clothing')">Clothing</button>
+      </div>
+
+      <div id="catPanelImage">
+        <h4>Placement</h4>
+        <div class="slot-row" id="catSlotRow">
+          <button class="slot-btn active" data-slot="front" onclick="window.setCatSlot('front')">Front</button>
+          <button class="slot-btn" data-slot="back" onclick="window.setCatSlot('back')">Back</button>
+          <button class="slot-btn" data-slot="top" onclick="window.setCatSlot('top')">Top</button>
+          <button class="slot-btn" data-slot="bottom" onclick="window.setCatSlot('bottom')">Bottom</button>
+        </div>
+        <h4>Image URL</h4>
+        <input type="text" id="catImageUrl" placeholder="https://example.com/image.png">
+        <button class="load-btn" onclick="window.loadCatImage()">Load Image</button>
+        <p style="font-size:11px;color:#777;margin-top:-4px">Drag the image on the canvas to position it. Clothing only moves up/down and wraps the body area.</p>
+      </div>
+
+      <div id="catPanelAccessory" style="display:none">
+        <h4>Accessory GLB</h4>
+        <input type="text" id="catGlbUrl" placeholder="Raw GitHub .glb link">
+        <button class="load-btn" onclick="window.loadCatAccessory()">Load Accessory</button>
+        <div class="acc-size-row">
+          <label>Size: <span id="accSizeVal">1.0</span>x</label>
+          <input type="range" id="accSizeSlider" min="0.1" max="5.0" step="0.05" value="1.0" oninput="window.resizeAccessory(this.value)">
+        </div>
+        <h4>Move</h4>
+        <div class="arrow-pad">
+          <div></div><button onclick="window.moveAccessory(0,0,-0.05)">⬆</button><div></div>
+          <button onclick="window.moveAccessory(-0.05,0,0)">⬅</button>
+          <button onclick="window.moveAccessory(0,0,0)" title="center">•</button>
+          <button onclick="window.moveAccessory(0.05,0,0)">➡</button>
+          <div></div><button onclick="window.moveAccessory(0,0,0.05)">⬇</button><div></div>
+        </div>
+        <div class="arrow-pad" style="grid-template-columns:repeat(3,60px)">
+          <button onclick="window.moveAccessory(0,0.05,0)">Up ⤒</button>
+          <button onclick="window.moveAccessory(0,-0.05,0)">Down ⤓</button>
+          <button onclick="window.rotateAccessory()">Rotate ↻</button>
+        </div>
+      </div>
+
+      <h4>Name &amp; Price</h4>
+      <input type="text" id="catItemNameQuick" placeholder="(set in Publish dialog)" disabled style="opacity:.5">
+    </div>
+    <div class="catstudio-center">
+      <div class="catstudio-viewports">
+        <div id="catStudio3D"></div>
+        <div id="catStudio2DWrap">
+          <canvas id="catStudio2DCanvas" width="2048" height="2048" style="width:240px;height:240px;cursor:crosshair;touch-action:none;"></canvas>
+        </div>
+      </div>
+      <div class="catstudio-hint">Left canvas: 3D model preview (drag to rotate). Right canvas: place your image.</div>
+    </div>
+  </div>
+</div>
+
+<div id="catalogPublishModal" style="position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:700;">
+  <div class="modal-box">
+    <h3>Publish Catalog Item</h3>
+    <label>Item Name</label>
+    <input type="text" id="catPubName" placeholder="Cool Sunglasses" maxlength="40">
+    <label>Price (Robux)</label>
+    <input type="number" id="catPubPrice" placeholder="50" min="0" step="1" value="50">
+    <div class="modal-actions">
+      <button class="cancel" onclick="window.closeCatalogPublishModal()">Cancel</button>
+      <button class="confirm" onclick="window.confirmCatalogPublish()">Publish Item</button>
+    </div>
+  </div>
+</div>
+
+<!-- GAME TYPE MODAL -->
+<div id="gameTypeModal">
+  <div class="game-type-box">
+    <h3>🎮 What type of Roblox game?</h3>
+    <div class="game-type-grid">
+      <div class="game-type-card" id="gt-obby" onclick="window.selectGameType('obby')">
+        <div class="gt-icon">🏃</div>
+        <h4>Obby Game</h4>
+        <p>Classic obstacle course with checkpoints &amp; win parts</p>
+      </div>
+      <div class="game-type-card" id="gt-survival" onclick="window.selectGameType('survival')">
+        <div class="gt-icon">🔪</div>
+        <h4>Survival the Killer</h4>
+        <p>Killers hunt players — Jeff, Siren Head &amp; more</p>
+      </div>
+      <div class="game-type-card" id="gt-featured" onclick="window.selectGameType('featured')">
+        <div class="gt-icon">⭐</div>
+        <h4>Featured</h4>
+        <p>All tools + extras: killers, cars, and special parts</p>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel" onclick="window.closeGameTypeModal()">Cancel</button>
+      <button class="confirm" id="gt-confirm-btn" onclick="window.confirmGameType()">Open Studio</button>
+    </div>
+  </div>
+</div>
+
+<!-- GLB ON PART MODAL -->
+<div id="glbPartModal">
+  <div class="glb-modal-box">
+    <h3>🔗 Load GLB onto Part</h3>
+    <p style="font-size:13px;color:#555;margin:0 0 12px">Select a part first, then paste a raw GitHub .glb URL to attach a 3D model to it.</p>
+    <label style="display:block;font-size:12px;font-weight:bold;margin-bottom:5px">GitHub Raw GLB URL</label>
+    <input type="text" id="glbPartUrl" style="width:100%;border:1px solid #ccc;padding:8px;font-size:13px;margin-bottom:14px" placeholder="https://raw.githubusercontent.com/.../.glb">
+    <div class="modal-actions">
+      <button class="cancel" onclick="window.closeGlbPartModal()">Cancel</button>
+      <button class="confirm" onclick="window.confirmGlbOnPart()">Load GLB</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBunoQ_AvkHZyG6Q27XH7AHUNk2LrpfCq0",
+  authDomain: "plantsvszombies-a4c6b.firebaseapp.com",
+  databaseURL: "https://plantsvszombies-a4c6b-default-rtdb.firebaseio.com",
+  projectId: "plantsvszombies-a4c6b",
+  storageBucket: "plantsvszombies-a4c6b.firebasestorage.app",
+  messagingSenderId: "807323640810",
+  appId: "1:807323640810:web:3012f04b20785ff89bc893"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'blockverse-demo';
+let isAuthComplete = false;
+
+// Global App State
+const state = { shirt:'#0055b3', pants:'#333333', skin:'#e8b98a' };
+let toastTimer;
+let myUsername = "Player_" + Math.floor(Math.random()*1000);
+let windowLoaded = false;
+
+// 3D Avatar Loading (GLB) - USING RAW GITHUB CONTENT URL
+let customAvatarScene = null;
+let customAvatarAnimations = [];
+const gltfLoader = new THREE.GLTFLoader();
+// Wire up Draco decompression in case the source GLB was Draco-compressed on export
+// (common for Sketchfab downloads). Harmless no-op if the file isn't compressed.
+if (typeof THREE.DRACOLoader !== 'undefined') {
+    const dracoLoader = new THREE.DRACOLoader();
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    gltfLoader.setDRACOLoader(dracoLoader);
+}
+// NOTE: previous filename contained a space + "(1)" and needed URI-encoding; this one is plain
+const avatarUrl = "https://raw.githubusercontent.com/Freerobuxplz/BlockVerseFiles/main/roblox_r6_body.glb";
+
+gltfLoader.load(avatarUrl, (gltf) => {
+    customAvatarScene = gltf.scene;
+
+    // Auto-fit: measure the imported model instead of assuming a fixed size,
+    // so it lines up correctly no matter how the source file was exported.
+    const box = new THREE.Box3().setFromObject(customAvatarScene);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const targetHeight = 2.2; // ~ blockverse character height in world units
+    const rawHeight = size.y || 1;
+    const scaleFactor = targetHeight / rawHeight;
+    customAvatarScene.scale.setScalar(scaleFactor);
+
+    // Recompute the box after scaling to offset so the feet sit on y=0
+    const scaledBox = new THREE.Box3().setFromObject(customAvatarScene);
+    customAvatarScene.position.y -= scaledBox.min.y;
+
+    customAvatarAnimations = gltf.animations || [];
+
+    // Ensure materials are cloneable so tinting one instance doesn't affect others,
+    // and make sure every mesh casts/receives shadows correctly & isn't inside-out.
+    customAvatarScene.traverse(child => {
+        if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+            if (child.material) {
+                child.material = child.material.clone();
+                child.material.side = THREE.FrontSide;
+            }
+        }
+    });
+
+    console.log("BlockVerse: custom GLB avatar loaded successfully.", {
+        height: rawHeight, scaleFactor, animations: customAvatarAnimations.length
+    });
+
+    if(windowLoaded) {
+        initAvatarPreview();
+        applyAvatarColors(); // Apply colors to the newly loaded GLB
+
+        // Ensure in-game player swaps to new model if already loaded in scene
+        if (player && gameScene) {
+            player.remove(playerVisuals);
+            playerVisuals = createPlayerVisuals();
+            player.add(playerVisuals);
+            applyEquippedItemsToVisual(playerVisuals, myEquippedData, null);
+        }
+    }
+}, undefined, (err) => {
+    console.error("BlockVerse: could not load custom GLB avatar, using blocky fallback.", err);
+});
+
+// Avatar Editor Preview Scene
+let avatarScene, avatarCamera, avatarRenderer, avatarModel, avatarMixer, avatarClock;
+let avatarAnimId;
+
+function initAvatarPreview() {
+    const container = document.getElementById('avatarPreviewContainer');
+    if(!container) return;
+    container.innerHTML = ''; // Clear loading text
+    
+    if(!avatarScene) {
+        avatarScene = new THREE.Scene();
+        avatarScene.background = new THREE.Color(0xffffff);
+        avatarCamera = new THREE.PerspectiveCamera(50, container.clientWidth/container.clientHeight, 0.1, 100);
+        avatarCamera.position.set(0, 1.1, 4);
+        avatarCamera.lookAt(0, 1.1, 0);
+
+        avatarRenderer = new THREE.WebGLRenderer({antialias: true});
+        avatarRenderer.setSize(container.clientWidth, container.clientHeight);
+        container.appendChild(avatarRenderer.domElement);
+
+        const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+        avatarScene.add(ambient);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(2, 5, 3);
+        avatarScene.add(dirLight);
+        
+        avatarClock = new THREE.Clock();
+    } else {
+        container.appendChild(avatarRenderer.domElement);
+    }
+
+    if (customAvatarScene && !avatarModel) {
+        // customAvatarScene is already auto-scaled with feet at y=0 (see loader),
+        // so no extra guessed offset is needed here - it just works for any model.
+        avatarModel = customAvatarScene.clone();
+        avatarScene.add(avatarModel);
+        
+        if (customAvatarAnimations.length > 0) {
+            avatarMixer = new THREE.AnimationMixer(avatarModel);
+            // Play first animation as idle
+            const action = avatarMixer.clipAction(customAvatarAnimations[0]);
+            action.play();
+        }
+    }
+    
+    if(!avatarAnimId) animateAvatarPreview();
+}
+
+function animateAvatarPreview() {
+    avatarAnimId = requestAnimationFrame(animateAvatarPreview);
+    const isActive = document.getElementById('avatar').classList.contains('active');
+    if(isActive && avatarRenderer) {
+        if (avatarModel) {
+            avatarModel.rotation.y += 0.01; // Spin avatar in preview
+        }
+        if (avatarMixer && avatarClock) {
+            avatarMixer.update(avatarClock.getDelta());
+        } else if (avatarClock) {
+            avatarClock.getDelta();
+        }
+        avatarRenderer.render(avatarScene, avatarCamera);
+    }
+}
+
+// Utility Functions
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2500);}
+function escapeHtml(s){ return (s||'').toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+window.showPage = function(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`.tab-btn[data-page="${id}"]`).classList.add('active');
+};
+window.doSearch = function(){
+  const q=document.getElementById('searchInput').value.trim().toLowerCase();
+  if(!q) return;
+  window.showPage('home');
+  showToast('Searching for: ' + q);
+};
+
+// Initial Home Grid content
+function makeSpongeCard(){
+  // Use the provided SpongeBob Obby icon (LoadingScreenReference image embedded as data URI via the document context)
+  const spongeThumb = `background:linear-gradient(180deg,#2B9CD8,#1a6fa8);`;
+  return `<div class="card" onclick="window.launchSpongeObby()">
+    <div class="thumb" style="${spongeThumb}display:flex;align-items:center;justify-content:center;font-size:60px;">🧽</div>
+    <div class="info"><div class="title">🧽 SpongeBob Obby</div><div class="stats"><span>👥 Global Sync</span><span>👍 96%</span></div></div>
+  </div>`;
+}
+document.getElementById('homeGrid').innerHTML = makeSpongeCard();
+
+/* ---------------- FIREBASE: PROFILE DATA ---------------- */
+window.changeUsername = async function() {
+    if (!isAuthComplete || !auth.currentUser) return showToast("Waiting for connection...");
+    const newName = document.getElementById('nameInput').value.trim();
+    if (newName.length < 3 || newName.length > 15) return showToast("Name must be 3-15 chars.");
+    
+    myUsername = newName;
+    document.getElementById('profileUsername').textContent = myUsername;
+    
+    try {
+        await setDoc(doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'profile'), { username: myUsername }, {merge: true});
+        showToast("Username Saved to Cloud!");
+    } catch(err) { console.error(err); showToast("Failed to save name."); }
+};
+
+async function loadProfile() {
+    try {
+        const profSnap = await getDoc(doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'profile'));
+        if (profSnap.exists() && profSnap.data().username) {
+            myUsername = profSnap.data().username;
+        } else {
+            // Save initial generated name
+            await setDoc(doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'profile'), { username: myUsername }, {merge: true});
+        }
+        if (profSnap.exists()) {
+            myOwnedIds = profSnap.data().ownedItems || [];
+            myEquippedIds = profSnap.data().equippedItems || [];
+        }
+        document.getElementById('profileUsername').textContent = myUsername;
+        document.getElementById('nameInput').value = myUsername;
+    } catch(err) { console.error("Profile load err:", err); }
+}
+
+/* ---------------- FIREBASE: COMMUNITY GAMES & DELETION ---------------- */
+let loadedGamesList = [];
+window.renderCommunityGrids = async function() {
+  if (!isAuthComplete || !auth.currentUser) return;
+  const grid=document.getElementById('communityGrid');
+  const myGrid=document.getElementById('myGamesGrid');
+  const myEmpty=document.getElementById('myGamesEmpty');
+  const note=document.getElementById('communityNote');
+  
+  try {
+    const gamesCollection = collection(db, 'artifacts', appId, 'public', 'data', 'games');
+    const snap = await getDocs(gamesCollection);
+    loadedGamesList = [];
+    snap.forEach(doc => loadedGamesList.push({id: doc.id, ...doc.data()}));
+    
+    if(loadedGamesList.length===0){ 
+      grid.innerHTML=''; note.style.display='block'; note.textContent="No community games found.";
+      myGrid.innerHTML=''; myEmpty.style.display='block'; 
+      return; 
+    }
+    
+    note.style.display='none'; 
+    grid.innerHTML = loadedGamesList.map(g=>`
+      <div class="card" onclick='window.launchCustomGame(${JSON.stringify(g.id)})'>
+        <div class="thumb" style="background:${g.thumb?`url('${escapeHtml(g.thumb)}') center/cover`:'linear-gradient(135deg,#eee,#ccc)'}"></div>
+        <div class="info"><div class="title">${escapeHtml(g.name)}</div><div class="stats"><span>Creator: User</span><span>Parts: ${g.parts ? g.parts.length : 0}</span></div></div>
+      </div>`).join('');
+      
+    // My Games Filter
+    const myGames = loadedGamesList.filter(g => g.creatorId === auth.currentUser.uid);
+    if (myGames.length === 0) {
+        myGrid.innerHTML = ''; myEmpty.style.display = 'block';
+    } else {
+        myEmpty.style.display = 'none';
+        myGrid.innerHTML = myGames.map(g=>`
+          <div class="card">
+            <div class="thumb" onclick='window.launchCustomGame("${g.id}")' style="background:${g.thumb?`url('${escapeHtml(g.thumb)}') center/cover`:'linear-gradient(135deg,#eee,#ccc)'}"></div>
+            <div class="info">
+               <div class="title">${escapeHtml(g.name)}</div>
+               <div class="stats" style="margin-top:6px"><button class="btn-delete" onclick="window.deleteGame('${g.id}')">Delete</button></div>
+            </div>
+          </div>`).join('');
+    }
+  } catch (error) { console.error(error); showToast("Failed to load games."); }
+}
+
+window.deleteGame = async function(gameId) {
+    if(!confirm("Are you sure you want to permanently delete this game?")) return;
+    try {
+        await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', gameId));
+        showToast("Game deleted permanently.");
+        window.renderCommunityGrids();
+    } catch(err) {
+        console.error(err); showToast("Failed to delete game.");
+    }
+};
+
+/* ---------------- 3D GAMEPLAY LOGIC ---------------- */
+let gameRenderer, gameScene, gameCamera, gameAnimId;
+let player, playerVisuals, playerVel = new THREE.Vector3();
+let onGround=false;
+let keys={};
+let courseCheckpoints=[], currentCheckpointIndex=0, spawnPos=new THREE.Vector3(0,3,0);
+let obstacles=[], killParts=[], checkpointMeshes=[], winParts=[];
+let gameStartTime=0, gameWon=false, activeCourseId='sponge', currentCustomData=null;
+let camYaw=0, camPitch=0.2;
+let gameNPCs=[]; // {group, bobPhase, speed}
+let gameBgAudio = null;
+
+// Touch/Mobile Joystick State
+const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+let joyActive = false, joyX = 0, joyY = 0, joyCenter = {x:0, y:0};
+
+function buildCustomCourse(scene, gameData){
+  courseCheckpoints=[]; obstacles=[]; killParts=[]; checkpointMeshes=[]; winParts=[]; gameNPCs=[];
+  let hasSpawn=false;
+  if(!gameData.parts) return;
+
+  // Play background music if set
+  if (gameBgAudio) { gameBgAudio.pause(); gameBgAudio = null; }
+  if (gameData.bgMusic) {
+    gameBgAudio = new Audio(gameData.bgMusic);
+    gameBgAudio.loop = true; gameBgAudio.volume = 0.35;
+    gameBgAudio.play().catch(()=>{});
+  }
+
+  gameData.parts.forEach(p=>{
+    if(p.type==='spawn'){
+      spawnPos.set(p.x, p.y+1.5, p.z); hasSpawn=true;
+      const m=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.5,0.2,16), new THREE.MeshLambertMaterial({color:0x555555}));
+      m.position.set(p.x,p.y,p.z); scene.add(m); return;
+    }
+    if(p.type==='text'){
+      const canvas=document.createElement('canvas'); canvas.width=256; canvas.height=64;
+      const ctx=canvas.getContext('2d'); ctx.fillStyle='transparent'; ctx.fillRect(0,0,256,64);
+      ctx.fillStyle='#fff'; ctx.font='bold 32px sans-serif'; ctx.textAlign='center'; ctx.fillText(p.text||'Text', 128, 45);
+      const m=new THREE.Mesh(new THREE.PlaneGeometry(p.sx||3, p.sy||1), new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas), transparent:true, side:THREE.DoubleSide}));
+      m.position.set(p.x,p.y,p.z); scene.add(m); return;
+    }
+    // Killer NPC
+    if(p.type==='killer_npc'){
+      const group = new THREE.Group();
+      group.position.set(p.x||0, p.y||1, p.z||0);
+      scene.add(group);
+      const ph = new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,2,8), new THREE.MeshLambertMaterial({color:p.kind==='jeff'?0xCC2222:0x556600}));
+      group.add(ph);
+      const npc = { group, bobPhase: Math.random()*Math.PI*2, speed: 0.035, damage: 30, lastDamageT: 0 };
+      gameNPCs.push(npc);
+      obstacles.push(group);
+      // Load actual GLB
+      if (p.url) {
+        const npcLoader = new THREE.GLTFLoader();
+        npcLoader.load(p.url, (gltf) => {
+          group.remove(ph);
+          const model = gltf.scene;
+          const box = new THREE.Box3().setFromObject(model); const sz = new THREE.Vector3(); box.getSize(sz);
+          model.scale.setScalar(2.0 / Math.max(sz.x,sz.y,sz.z,1));
+          group.add(model);
+        }, undefined, ()=>{});
+      }
+      return;
+    }
+    // Cars
+    if(p.type==='car'){
+      const group = new THREE.Group();
+      group.position.set(p.x||5, p.y||0.5, p.z||0);
+      scene.add(group);
+      const ph = new THREE.Mesh(new THREE.BoxGeometry(3,1,5), new THREE.MeshLambertMaterial({color:0xCC0000}));
+      group.add(ph);
+      obstacles.push(group);
+      if (p.url) {
+        const carLoader = new THREE.GLTFLoader();
+        carLoader.load(p.url, (gltf) => {
+          group.remove(ph);
+          const model = gltf.scene;
+          const box = new THREE.Box3().setFromObject(model); const sz = new THREE.Vector3(); box.getSize(sz);
+          model.scale.setScalar(3.0 / Math.max(sz.x,sz.y,sz.z,1));
+          group.add(model);
+        }, undefined, ()=>{});
+      }
+      return;
+    }
+    const m=new THREE.Mesh(new THREE.BoxGeometry(p.sx||3,p.sy||1,p.sz||3), new THREE.MeshLambertMaterial({color:p.color||'#888888'}));
+    m.position.set(p.x,p.y,p.z); scene.add(m);
+    // Load GLB on part if it has one
+    if (p.glbUrl) {
+      const pLoader = new THREE.GLTFLoader();
+      pLoader.load(p.glbUrl, (gltf) => {
+        const model = gltf.scene;
+        const box = new THREE.Box3().setFromObject(model); const sz = new THREE.Vector3(); box.getSize(sz);
+        const sc = Math.max(p.sx||3,p.sy||1,p.sz||3)/Math.max(sz.x,sz.y,sz.z,1);
+        model.scale.setScalar(sc);
+        m.add(model);
+      }, undefined, ()=>{});
+    }
+    if(p.type==='kill') killParts.push(m);
+    else if(p.type==='win') winParts.push(m);
+    else if(p.type==='checkpoint'){
+      checkpointMeshes.push(m); courseCheckpoints.push(new THREE.Vector3(p.x,p.y+1.5,p.z));
+    } else obstacles.push(m);
+  });
+  if(!hasSpawn) spawnPos.set(0,3,0);
+  document.getElementById('hudCheckpointTotal').textContent = Math.max(courseCheckpoints.length-1,0);
+}
+
+// Function to create a visual player character (uses GLB if loaded, otherwise blocky)
+let playerMixer = null;
+function createPlayerVisuals() {
+    const visualGroup = new THREE.Group();
+    if (customAvatarScene) {
+        const model = customAvatarScene.clone();
+        visualGroup.add(model);
+        
+        if (customAvatarAnimations && customAvatarAnimations.length > 0) {
+            playerMixer = new THREE.AnimationMixer(model);
+            // Play first animation
+            const action = playerMixer.clipAction(customAvatarAnimations[0]);
+            action.play();
+        }
+        applyColorsToGLB(model);
+    } else {
+        // Full blocky R6-style fallback (used only if the GLB ever fails to load)
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(1.2,1.4,0.6), new THREE.MeshLambertMaterial({color: state.shirt}));
+        torso.position.y=1.2; torso.name='torso'; visualGroup.add(torso);
+        const head = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshLambertMaterial({color: state.skin}));
+        head.position.y=2.4; head.name='head'; visualGroup.add(head);
+        const armGeo = new THREE.BoxGeometry(0.4,1.4,0.4);
+        const armL = new THREE.Mesh(armGeo, new THREE.MeshLambertMaterial({color: state.skin}));
+        armL.position.set(-0.8,1.2,0); armL.name='armLeft'; visualGroup.add(armL);
+        const armR = new THREE.Mesh(armGeo, new THREE.MeshLambertMaterial({color: state.skin}));
+        armR.position.set(0.8,1.2,0); armR.name='armRight'; visualGroup.add(armR);
+        const legGeo = new THREE.BoxGeometry(0.5,1.2,0.5);
+        const legL = new THREE.Mesh(legGeo, new THREE.MeshLambertMaterial({color: state.pants}));
+        legL.position.set(-0.3,0,0); legL.name='legLeft'; visualGroup.add(legL);
+        const legR = new THREE.Mesh(legGeo, new THREE.MeshLambertMaterial({color: state.pants}));
+        legR.position.set(0.3,0,0); legR.name='legRight'; visualGroup.add(legR);
+    }
+    return visualGroup;
+}
+
+function initGameScene(){
+  const wrap = document.getElementById('gameCanvasWrap');
+  gameScene = new THREE.Scene();
+  gameScene.background = new THREE.Color(0x87CEEB);
+  gameCamera = new THREE.PerspectiveCamera(70, wrap.clientWidth/wrap.clientHeight, 0.1, 800);
+  gameRenderer = new THREE.WebGLRenderer({antialias:true});
+  gameRenderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  wrap.insertBefore(gameRenderer.domElement, wrap.firstChild);
+
+  gameScene.add(new THREE.HemisphereLight(0xffffff, 0x555555, 1.0));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.6); sun.position.set(20,40,20); gameScene.add(sun);
+
+  player = new THREE.Group();
+  playerVisuals = createPlayerVisuals();
+  player.add(playerVisuals);
+  gameScene.add(player);
+
+  if(isTouch){
+      document.getElementById('joystickZone').style.display = 'block';
+      document.getElementById('jumpBtn').style.display = 'flex';
+      setupJoystick();
+  }
+}
+
+function setupJoystick(){
+    const jz = document.getElementById('joystickZone');
+    const jk = document.getElementById('joystickKnob');
+    jz.addEventListener('touchstart', e => {
+        joyActive = true;
+        const rect = jz.getBoundingClientRect();
+        joyCenter = { x: rect.left + rect.width/2, y: rect.top + rect.height/2 };
+        updateJoy(e.touches[0]);
+    }, {passive:false});
+    jz.addEventListener('touchmove', e => { if(joyActive){ e.preventDefault(); updateJoy(e.touches[0]); } }, {passive:false});
+    jz.addEventListener('touchend', () => { joyActive = false; joyX=0; joyY=0; jk.style.transform = `translate(0px, 0px)`; });
+    function updateJoy(t) {
+        let dx = t.clientX - joyCenter.x, dy = t.clientY - joyCenter.y;
+        const dist = Math.min(Math.hypot(dx,dy), 35);
+        const ang = Math.atan2(dy, dx);
+        dx = Math.cos(ang)*dist; dy = Math.sin(ang)*dist;
+        jk.style.transform = `translate(${dx}px, ${dy}px)`;
+        joyX = dx/35; joyY = dy/35; 
+    }
+}
+
+function animateGame(){
+  gameAnimId = requestAnimationFrame(animateGame);
+  const dt = 1/60;
+
+  // Input mapping (Fixed WS inversions!)
+  let mvx = joyX, mvz = joyY;
+  if(keys['KeyW']||keys['ArrowUp']) mvz-=1; // W moves forward (negative Z relative to camera look)
+  if(keys['KeyS']||keys['ArrowDown']) mvz+=1;
+  if(keys['KeyA']||keys['ArrowLeft']) mvx-=1;
+  if(keys['KeyD']||keys['ArrowRight']) mvx+=1;
+  
+  const mag = Math.hypot(mvx,mvz);
+  if(mag>1){ mvx/=mag; mvz/=mag; } 
+  
+  const speed=18;
+  const forward = new THREE.Vector3(Math.sin(camYaw),0,Math.cos(camYaw));
+  const right = new THREE.Vector3(Math.sin(camYaw+Math.PI/2),0,Math.cos(camYaw+Math.PI/2));
+  
+  const move = new THREE.Vector3().addScaledVector(forward, mvz).addScaledVector(right, mvx);
+  
+  playerVel.x = move.x*speed;
+  playerVel.z = move.z*speed;
+  playerVel.y -= 25*dt; // Gravity
+  
+  player.position.x += playerVel.x*dt;
+  player.position.z += playerVel.z*dt;
+  player.position.y += playerVel.y*dt;
+
+  onGround=false;
+  [...obstacles, ...checkpointMeshes, ...winParts].forEach(o=>{
+    const box = new THREE.Box3().setFromObject(o);
+    const px=player.position.x, pz=player.position.z, py=player.position.y;
+    // Simple box collision
+    if(px>box.min.x-0.6 && px<box.max.x+0.6 && pz>box.min.z-0.6 && pz<box.max.z+0.6){
+      if(py>=box.max.y-0.4 && py+playerVel.y*dt<=box.max.y+0.6 && playerVel.y<=0){
+        player.position.y = box.max.y; playerVel.y=0; onGround=true;
+      }
+    }
+  });
+
+  if(player.position.y < -25) respawnPlayer();
+
+  killParts.forEach(k=>{
+    if(new THREE.Box3().setFromObject(k).intersectsBox(new THREE.Box3().setFromObject(player))){
+      respawnPlayer();
+    }
+  });
+  
+  winParts.forEach(w=>{
+      if(!gameWon && new THREE.Box3().setFromObject(w).intersectsBox(new THREE.Box3().setFromObject(player))){
+          gameWon=true;
+          document.getElementById('winTime').textContent = 'Time: ' + ((performance.now()-gameStartTime)/1000).toFixed(1) + 's';
+          document.getElementById('winBanner').style.display='block';
+      }
+  });
+  courseCheckpoints.forEach((cp,i)=>{
+    if(i>currentCheckpointIndex && player.position.distanceTo(cp) < 2.0){
+      currentCheckpointIndex=i; document.getElementById('hudCheckpoint').textContent = i; showToast('Checkpoint reached!');
+    }
+  });
+
+  if(keys['Space'] && onGround){ playerVel.y = 12; onGround=false; keys['Space']=false; playJumpSound(); lastJumpT = Date.now(); }
+
+  // NPC Killer Bob & Chase Logic
+  const gameNow = Date.now();
+  gameNPCs.forEach(npc => {
+    npc.bobPhase += 0.06;
+    // Bob left and right
+    npc.group.position.x += Math.sin(npc.bobPhase) * 0.018;
+    npc.group.rotation.z = Math.sin(npc.bobPhase) * 0.12;
+    // Chase nearest player
+    if (player) {
+      const dx = player.position.x - npc.group.position.x;
+      const dz = player.position.z - npc.group.position.z;
+      const dist = Math.sqrt(dx*dx + dz*dz);
+      if (dist > 0.5) {
+        npc.group.position.x += (dx/dist) * npc.speed;
+        npc.group.position.z += (dz/dist) * npc.speed;
+        npc.group.rotation.y = Math.atan2(dx, dz);
+      }
+      // Floor the NPC
+      npc.group.position.y = Math.max(npc.group.position.y, 0.5);
+      // Touch damage (30 every second)
+      if (dist < 1.5 && gameNow - npc.lastDamageT > 1000) {
+        npc.lastDamageT = gameNow;
+        respawnPlayer();
+        showToast('☠️ The killer got you!');
+      }
+    }
+  });
+
+  // Camera Orbit
+  const camDist=12;
+  const cx = player.position.x + Math.sin(camYaw)*camDist*Math.cos(camPitch);
+  const cz = player.position.z + Math.cos(camYaw)*camDist*Math.cos(camPitch);
+  const cy = player.position.y + 2 + Math.sin(camPitch)*camDist;
+  gameCamera.position.set(cx,cy,cz);
+  gameCamera.lookAt(player.position.x, player.position.y+1, player.position.z);
+  
+  // Model faces direction of movement, otherwise faces camera
+  if (Math.abs(mvx) > 0.1 || Math.abs(mvz) > 0.1) {
+       const targetAngle = Math.atan2(playerVel.x, playerVel.z);
+       // Simple lerp rotation
+       const diff = targetAngle - playerVisuals.rotation.y;
+       playerVisuals.rotation.y += Math.atan2(Math.sin(diff), Math.cos(diff)) * 0.15;
+  } else {
+       playerVisuals.rotation.y = camYaw + Math.PI;
+  }
+  
+  if(playerMixer) {
+      playerMixer.update(dt);
+  }
+
+  // Make multiplayer nameplates always look at camera
+  Object.values(remotePlayersMap).forEach(rp => {
+      if(rp.tag) rp.tag.lookAt(gameCamera.position);
+  });
+
+  if(!gameWon) document.getElementById('hudTimer').textContent = ((performance.now()-gameStartTime)/1000).toFixed(1)+'s';
+  updateDom3DLayer();
+  gameRenderer.render(gameScene, gameCamera);
+}
+
+function respawnPlayer(){
+  const cp = courseCheckpoints[currentCheckpointIndex] || spawnPos;
+  player.position.copy(cp); playerVel.set(0,0,0);
+  playDeathSound();
+  lastDeathT = Date.now();
+}
+
+/* ---------------- SOUNDS ---------------- */
+let lastJumpT = 0, lastDeathT = 0;
+const NEAR_SOUND_DIST = 22; // how close a remote player must be to hear their jump/death
+function playJumpSound(){
+  try { const a = new Audio('https://www.myinstants.com/media/sounds/action_jump.mp3'); a.volume = 0.6; a.play().catch(()=>{}); } catch(e){}
+}
+function playDeathSound(vol){
+  try { const a = new Audio('https://www.myinstants.com/media/sounds/roblox-death-sound_ytkBL7X.mp3'); a.volume = (vol!==undefined?vol:0.7); a.play().catch(()=>{}); } catch(e){}
+}
+
+window.launchSpongeObby = function(){
+    showGameLoadingScreen('SpongeBob Obby', '🧽', 'BlockVerse', () => openPlayer('sponge', null));
+};
+window.launchCustomGame = function(id){
+  const g = loadedGamesList.find(x=>x.id===id);
+  if(!g) return;
+  showGameLoadingScreen(g.name, g.thumb || '🎮', g.creatorId ? 'Community Creator' : 'Creator', () => openPlayer('custom', g));
+};
+
+function showGameLoadingScreen(name, iconSrc, creator, onDone) {
+    const screen = document.getElementById('gameLoadingScreen');
+    const iconEl = document.getElementById('loadingGameIcon');
+    document.getElementById('loadingGameName').textContent = name;
+    document.getElementById('loadingGameCreator').textContent = 'By ' + creator;
+    // Set icon: emoji or URL
+    if (iconSrc && (iconSrc.startsWith('http') || iconSrc.startsWith('data:'))) {
+        iconEl.src = iconSrc;
+        iconEl.style.display = 'block';
+    } else {
+        // Emoji icon - render to canvas
+        iconEl.style.display = 'none';
+        iconEl.insertAdjacentHTML('afterend', `<div id="loadingEmojiIcon" style="font-size:72px;margin-bottom:16px">${iconSrc||'🎮'}</div>`);
+    }
+    screen.style.opacity = '1';
+    screen.classList.add('active');
+    screen.classList.remove('fade-out');
+    // After 2s, fade out and launch
+    setTimeout(() => {
+        onDone();
+        screen.classList.add('fade-out');
+        setTimeout(() => {
+            screen.classList.remove('active');
+            screen.classList.remove('fade-out');
+            const emojiEl = document.getElementById('loadingEmojiIcon');
+            if (emojiEl) emojiEl.remove();
+            iconEl.style.display = 'block';
+        }, 850);
+    }, 2000);
+}
+
+function openPlayer(courseId, customData){
+  document.getElementById('playerOverlay').classList.add('active');
+  if(!gameRenderer) initGameScene();
+  
+  // Ensure we have newest avatar visual if it just loaded
+  player.remove(playerVisuals);
+  playerVisuals = createPlayerVisuals();
+  player.add(playerVisuals);
+  applyEquippedItemsToVisual(playerVisuals, myEquippedData, null);
+
+  [...obstacles, ...killParts, ...checkpointMeshes, ...winParts].forEach(m=>gameScene.remove(m));
+  
+  if(customData) buildCustomCourse(gameScene, customData);
+  else {
+      // SpongeBob specific default map
+      const m = new THREE.Mesh(new THREE.BoxGeometry(10,1,10), new THREE.MeshLambertMaterial({color:0xF5D327}));
+      gameScene.add(m); obstacles.push(m); spawnPos.set(0,3,0);
+      
+      const m2 = new THREE.Mesh(new THREE.BoxGeometry(4,1,4), new THREE.MeshLambertMaterial({color:0x2B9CD8}));
+      m2.position.set(0, 4, -15); gameScene.add(m2); obstacles.push(m2);
+      
+      const win = new THREE.Mesh(new THREE.BoxGeometry(4,1,4), new THREE.MeshLambertMaterial({color:0xF5A623}));
+      win.position.set(0, 8, -30); gameScene.add(win); winParts.push(win);
+  }
+  
+  document.getElementById('playerGameTitle').textContent = customData ? customData.name : 'SpongeBob Obby';
+  gameWon=false; document.getElementById('winBanner').style.display='none';
+  currentCheckpointIndex=0; document.getElementById('hudCheckpoint').textContent='0';
+  respawnPlayer();
+  gameStartTime = performance.now();
+  
+  if(gameAnimId) cancelAnimationFrame(gameAnimId);
+  if(windowLoaded) animateGame();
+  
+  const netId = customData ? customData.id : 'sponge';
+  loadChatRealtime(netId);
+  joinMultiplayer(netId);
+  
+  window.addEventListener('resize', onGameResize); onGameResize();
+}
+
+function onGameResize(){
+  if(!gameRenderer) return;
+  const wrap=document.getElementById('gameCanvasWrap');
+  gameCamera.aspect = wrap.clientWidth/wrap.clientHeight;
+  gameCamera.updateProjectionMatrix();
+  gameRenderer.setSize(wrap.clientWidth, wrap.clientHeight);
+}
+
+window.closePlayer = function(){
+  document.getElementById('playerOverlay').classList.remove('active');
+  if(gameAnimId) cancelAnimationFrame(gameAnimId);
+  window.removeEventListener('resize', onGameResize);
+  leaveMultiplayer();
+  if (gameBgAudio) { gameBgAudio.pause(); gameBgAudio = null; }
+  // Clear any leftover chat bubbles / loading bars from the DOM overlay layer
+  activeChatBubbles.forEach(b=>b.el.remove()); activeChatBubbles=[];
+  activeLoadBars.forEach(b=>b.el.remove()); activeLoadBars=[];
+  const dl = document.getElementById('dom3dLayer'); if(dl) dl.innerHTML='';
+};
+window.restartCourse = function(){ openPlayer(activeCourseId, currentCustomData); };
+
+window.addEventListener('keydown', e=>{ keys[e.code]=true; });
+window.addEventListener('keyup', e=>{ keys[e.code]=false; });
+
+// Mouse look
+document.getElementById('gameCanvasWrap').addEventListener('mousedown', e=>{
+  if(e.target.closest('.chat-panel') || e.target.closest('#joystickZone') || e.target.closest('.jump-btn')) return;
+  if(document.pointerLockElement !== document.getElementById('gameCanvasWrap')) {
+      document.getElementById('gameCanvasWrap').requestPointerLock();
+  }
+});
+document.addEventListener('mousemove', e=>{
+  if(document.pointerLockElement === document.getElementById('gameCanvasWrap')){
+    camYaw -= e.movementX*0.003;
+    camPitch = Math.max(-0.2, Math.min(1.2, camPitch - e.movementY*0.003));
+  }
+});
+document.getElementById('jumpBtn').addEventListener('touchstart', e=>{ e.preventDefault(); keys['Space']=true; }, {passive:false});
+
+/* ---------------- FIREBASE: CHAT ---------------- */
+let currentChatGameId = null, chatUnsubscribe = null;
+let chatSessionStart = 0; // used to avoid spawning bubbles for old backlog messages on join
+function loadChatRealtime(gameId) {
+  currentChatGameId = gameId;
+  chatSessionStart = Date.now();
+  if (chatUnsubscribe) { chatUnsubscribe(); chatUnsubscribe = null; }
+  const log = document.getElementById('chatLog'); log.innerHTML = '<i>Connecting...</i>';
+  if (!isAuthComplete || !auth.currentUser) return; 
+
+  const chatCol = collection(db, 'artifacts', appId, 'public', 'data', `chat_${gameId}`);
+  chatUnsubscribe = onSnapshot(chatCol, (snap) => {
+    const msgs = [];
+    snap.forEach(d => msgs.push(d.data()));
+    msgs.sort((a, b) => a.t - b.t);
+    log.innerHTML = msgs.length ? msgs.map(m => `<div><b>${escapeHtml(m.user)}:</b> ${escapeHtml(m.msg)}</div>`).join('') : '<i>Say hi!</i>';
+    log.scrollTop = log.scrollHeight;
+
+    // Spawn floating chat bubbles above heads for newly-added messages only
+    snap.docChanges().forEach(change => {
+      if (change.type !== 'added') return;
+      const data = change.doc.data();
+      if (!data.t || data.t < chatSessionStart - 1500) return; // skip historical backlog
+      spawnChatBubble(data.uid, data.msg);
+    });
+  }, err => console.error(err));
+}
+
+window.sendChat = async function() {
+  const input = document.getElementById('chatInput');
+  const val = input.value.trim();
+  if(!val || !isAuthComplete || !auth.currentUser) return;
+  const msgEntry = { user: myUsername, msg: val, t: Date.now(), uid: auth.currentUser.uid };
+  try {
+    await setDoc(doc(collection(db, 'artifacts', appId, 'public', 'data', `chat_${currentChatGameId}`), Date.now().toString()), msgEntry);
+    input.value = '';
+  } catch(e) { console.error(e); }
+};
+document.getElementById('chatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') window.sendChat(); });
+
+/* ---------------- CHAT BUBBLES (float above heads, fade out) ---------------- */
+let activeChatBubbles = []; // {el, obj3d, expireAt}
+function spawnChatBubble(uid, msg) {
+  if (!uid || !msg) return;
+  let obj3d = null;
+  if (auth.currentUser && uid === auth.currentUser.uid) obj3d = player;
+  else if (remotePlayersMap[uid]) obj3d = remotePlayersMap[uid].group;
+  if (!obj3d) return; // can't anchor bubble (player not visible to us)
+
+  const layer = document.getElementById('dom3dLayer');
+  if (!layer) return;
+  const el = document.createElement('div');
+  el.className = 'chat-bubble';
+  el.textContent = msg;
+  layer.appendChild(el);
+  const entry = { el, obj3d, expireAt: Date.now() + 4000 };
+  activeChatBubbles.push(entry);
+  setTimeout(() => { el.classList.add('fadeout'); }, 3400);
+  setTimeout(() => { el.remove(); activeChatBubbles = activeChatBubbles.filter(b => b !== entry); }, 4200);
+}
+
+/* ---------------- ACCESSORY LOADING BARS (float above heads while GLB loads) ---------------- */
+let activeLoadBars = []; // {el, obj3d}
+function showAccessoryLoadBar(obj3d) {
+  const layer = document.getElementById('dom3dLayer');
+  if (!layer) return null;
+  const el = document.createElement('div');
+  el.className = 'accessory-loadbar';
+  el.innerHTML = '<div class="fill"></div>';
+  layer.appendChild(el);
+  const entry = { el, obj3d };
+  activeLoadBars.push(entry);
+  return entry;
+}
+function hideAccessoryLoadBar(entry) {
+  if (!entry) return;
+  entry.el.remove();
+  activeLoadBars = activeLoadBars.filter(b => b !== entry);
+}
+
+// Project all active DOM-anchored 3D elements (bubbles + loading bars) to screen space each frame
+function updateDom3DLayer() {
+  if (!gameRenderer || !gameCamera) return;
+  const wrap = document.getElementById('gameCanvasWrap');
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  const tmp = new THREE.Vector3();
+  function project(obj3d, headHeight) {
+    if (!obj3d) return null;
+    tmp.set(obj3d.position.x, obj3d.position.y + headHeight, obj3d.position.z);
+    tmp.project(gameCamera);
+    if (tmp.z > 1) return null; // behind camera
+    return { x: (tmp.x * 0.5 + 0.5) * w, y: (-tmp.y * 0.5 + 0.5) * h };
+  }
+  activeChatBubbles.forEach(b => {
+    const p = project(b.obj3d, 2.9);
+    if (p) { b.el.style.display = 'block'; b.el.style.left = p.x + 'px'; b.el.style.top = p.y + 'px'; }
+    else { b.el.style.display = 'none'; }
+  });
+  activeLoadBars.forEach(b => {
+    const p = project(b.obj3d, 3.1);
+    if (p) { b.el.style.display = 'block'; b.el.style.left = p.x + 'px'; b.el.style.top = p.y + 'px'; }
+    else { b.el.style.display = 'none'; }
+  });
+}
+
+/* ---------------- FIREBASE: MULTIPLAYER SYNC ---------------- */
+let syncInterval = null, sessionUnsubscribe = null, remotePlayersMap = {};
+
+let connectionLost = false;
+let reconnectTimer = null;
+
+function setupConnectionMonitor(gameId) {
+    // Monitor online/offline status and resync player into DB when reconnected
+    window.addEventListener('online', async () => {
+        if (connectionLost && isAuthComplete && auth.currentUser && player) {
+            connectionLost = false;
+            showToast('🔄 Reconnected — syncing player...');
+            const uid = auth.currentUser.uid;
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', `session_${gameId}`, uid);
+            try {
+                await setDoc(docRef, {
+                    x: player.position.x, y: player.position.y, z: player.position.z,
+                    rot: playerVisuals ? playerVisuals.rotation.y : 0,
+                    name: myUsername, t: Date.now(),
+                    jumpT: lastJumpT, deathT: lastDeathT, equipped: myEquippedData
+                });
+                // Reload chat and session listeners
+                loadChatRealtime(gameId);
+                if (sessionUnsubscribe) { sessionUnsubscribe(); sessionUnsubscribe = null; }
+                const sessionCol = collection(db, 'artifacts', appId, 'public', 'data', `session_${gameId}`);
+                const uid2 = auth.currentUser.uid;
+                sessionUnsubscribe = onSnapshot(sessionCol, (snap) => {
+                    const now = Date.now();
+                    let playerCount = 1;
+                    snap.forEach(docSnap => {
+                        const id = docSnap.id;
+                        if(id === uid2) return;
+                        const data = docSnap.data();
+                        if(now - data.t > 15000) removeRemotePlayer(id);
+                        else { updateRemotePlayer(id, data); playerCount++; }
+                    });
+                    document.getElementById('hudPlayers').textContent = playerCount;
+                });
+                showToast('✅ Player resynced to database!');
+            } catch(e) { console.error('Resync failed:', e); showToast('⚠️ Resync failed, retrying...'); }
+        }
+    });
+    window.addEventListener('offline', () => {
+        connectionLost = true;
+        showToast('⚠️ Connection lost...');
+    });
+}
+
+async function joinMultiplayer(gameId) {
+    if(!isAuthComplete || !auth.currentUser) return;
+    const uid = auth.currentUser.uid;
+    const docRef = doc(db, 'artifacts', appId, 'public', 'data', `session_${gameId}`, uid);
+    
+    await setDoc(docRef, { x: player.position.x, y: player.position.y, z: player.position.z, rot: playerVisuals.rotation.y, name: myUsername, t: Date.now(), jumpT: lastJumpT, deathT: lastDeathT, equipped: myEquippedData });
+
+    setupConnectionMonitor(gameId);
+
+    syncInterval = setInterval(() => {
+        if(!player || connectionLost) return;
+        updateDoc(docRef, { x: player.position.x, y: player.position.y, z: player.position.z, rot: playerVisuals.rotation.y, t: Date.now(), jumpT: lastJumpT, deathT: lastDeathT, equipped: myEquippedData }).catch(e=>{ connectionLost = true; });
+    }, 250); // 4 FPS sync rate to save quotas but enable visuals
+
+    const sessionCol = collection(db, 'artifacts', appId, 'public', 'data', `session_${gameId}`);
+    sessionUnsubscribe = onSnapshot(sessionCol, (snap) => {
+        const now = Date.now();
+        let playerCount = 1;
+        snap.forEach(docSnap => {
+            const id = docSnap.id;
+            if(id === uid) return;
+            const data = docSnap.data();
+            if(now - data.t > 15000) { 
+                removeRemotePlayer(id); // Left or disconnected
+            } else {
+                updateRemotePlayer(id, data);
+                playerCount++;
+            }
+        });
+        document.getElementById('hudPlayers').textContent = playerCount;
+    });
+}
+
+function leaveMultiplayer() {
+    if(syncInterval) clearInterval(syncInterval);
+    if(sessionUnsubscribe) sessionUnsubscribe();
+    if(isAuthComplete && auth.currentUser && currentChatGameId) {
+         deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', `session_${currentChatGameId}`, auth.currentUser.uid)).catch(e=>{});
+    }
+    Object.values(remotePlayersMap).forEach(p => gameScene.remove(p.group));
+    remotePlayersMap = {};
+}
+
+function updateRemotePlayer(id, data) {
+    if(!remotePlayersMap[id]) {
+        const group = new THREE.Group();
+        const visuals = createPlayerVisuals();
+        group.add(visuals);
+        
+        // Build 3D Name Tag
+        const canvas = document.createElement('canvas'); canvas.width = 512; canvas.height = 128;
+        const ctx = canvas.getContext('2d'); ctx.fillStyle = 'transparent'; ctx.fillRect(0,0,512,128);
+        ctx.font = 'bold 50px Arial'; ctx.textAlign = 'center'; 
+        ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#000000'; ctx.lineWidth = 6;
+        ctx.strokeText(data.name, 256, 80); ctx.fillText(data.name, 256, 80);
+        
+        const tag = new THREE.Mesh(new THREE.PlaneGeometry(4, 1), new THREE.MeshBasicMaterial({map: new THREE.CanvasTexture(canvas), transparent: true, side: THREE.DoubleSide}));
+        tag.position.y = 2.5; 
+        group.add(tag);
+        
+        gameScene.add(group);
+        remotePlayersMap[id] = { group, tag, visuals, jumpT: data.jumpT||0, deathT: data.deathT||0, equippedKey: '', firstSeen: Date.now() };
+    }
+    const rp = remotePlayersMap[id];
+    
+    // Snap position
+    rp.group.position.set(data.x, data.y, data.z);
+    
+    // Rotate the visual portion specifically to prevent the name tag from spinning crazily
+    const visual = rp.group.children[0];
+    if(visual) visual.rotation.y = data.rot;
+
+    // Proximity jump/death sound detection (skip the very first update after join, to avoid a burst of sounds)
+    const dist = player ? player.position.distanceTo(rp.group.position) : 999;
+    const seenAWhile = Date.now() - rp.firstSeen > 800;
+    if (seenAWhile && data.jumpT && data.jumpT !== rp.jumpT && Date.now() - data.jumpT < 2000) {
+        if (dist < NEAR_SOUND_DIST) playJumpSound();
+    }
+    if (seenAWhile && data.deathT && data.deathT !== rp.deathT && Date.now() - data.deathT < 2000) {
+        if (dist < NEAR_SOUND_DIST) playDeathSound(0.7 * Math.max(0.15, 1 - dist / NEAR_SOUND_DIST));
+    }
+    rp.jumpT = data.jumpT || rp.jumpT;
+    rp.deathT = data.deathT || rp.deathT;
+
+    // Sync equipped catalog items (only rebuild visuals if the equipped set actually changed)
+    const equipped = data.equipped || [];
+    const key = JSON.stringify(equipped.map(i=>i.id));
+    if (key !== rp.equippedKey) {
+        rp.equippedKey = key;
+        applyEquippedItemsToVisual(rp.visuals, equipped, rp.group);
+    }
+}
+
+function removeRemotePlayer(id) {
+    if(remotePlayersMap[id]) {
+        if (remotePlayersMap[id].group.userData.activeLoadBar) hideAccessoryLoadBar(remotePlayersMap[id].group.userData.activeLoadBar);
+        gameScene.remove(remotePlayersMap[id].group);
+        delete remotePlayersMap[id];
+    }
+}
+
+// Ensure cleanup on window close
+window.addEventListener("beforeunload", () => { leaveMultiplayer(); });
+
+/* ---------------- STUDIO EDITOR LOGIC ---------------- */
+let studioScene, studioCamera, studioRenderer, studioAnimId, studioRaycaster;
+let studioParts=[]; let selectedPart=null;
+let studioCamPos = new THREE.Vector3(0, 15, 30);
+let studioCamYaw = 0, studioCamPitch = -0.3;
+let studioRightClickDown = false;
+
+window.openStudio = function(){
+  document.getElementById('studioOverlay').classList.add('active');
+  if(!studioRenderer) initStudio();
+  else window.resetBaseplate();
+  onStudioResize(); window.addEventListener('resize', onStudioResize);
+};
+window.closeStudio = function(){
+  document.getElementById('studioOverlay').classList.remove('active');
+  window.removeEventListener('resize', onStudioResize);
+};
+function onStudioResize(){
+  if(!studioRenderer) return;
+  const wrap=document.getElementById('studioViewport');
+  studioCamera.aspect=wrap.clientWidth/wrap.clientHeight; studioCamera.updateProjectionMatrix();
+  studioRenderer.setSize(wrap.clientWidth, wrap.clientHeight);
+}
+
+function initStudio(){
+  const wrap=document.getElementById('studioViewport');
+  studioScene=new THREE.Scene(); studioScene.background=new THREE.Color(0x99BBDD);
+  studioCamera=new THREE.PerspectiveCamera(70, wrap.clientWidth/wrap.clientHeight, 0.1, 1000);
+  studioCamera.rotation.order = 'YXZ';
+  studioRenderer=new THREE.WebGLRenderer({antialias:true});
+  studioRenderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  wrap.appendChild(studioRenderer.domElement);
+
+  studioScene.add(new THREE.HemisphereLight(0xffffff,0x555555,1.0));
+  const sun=new THREE.DirectionalLight(0xffffff,0.7); sun.position.set(20,40,20); studioScene.add(sun);
+
+  window.resetBaseplate();
+  studioRaycaster=new THREE.Raycaster();
+  
+  wrap.addEventListener('mousedown', e=>{
+      if(e.button === 2) { studioRightClickDown = true; return; }
+      const rect=wrap.getBoundingClientRect();
+      const mouse=new THREE.Vector2(((e.clientX-rect.left)/rect.width)*2-1, -((e.clientY-rect.top)/rect.height)*2+1);
+      studioRaycaster.setFromCamera(mouse, studioCamera);
+      const hits=studioRaycaster.intersectObjects(studioParts.map(p=>p.mesh));
+      selectPart(hits.length>0 ? studioParts.find(p=>p.mesh===hits[0].object) : null);
+  });
+  window.addEventListener('mouseup', e=>{ if(e.button===2) studioRightClickDown = false; });
+  wrap.addEventListener('mousemove', e=>{
+      if(studioRightClickDown){
+          studioCamYaw -= e.movementX * 0.005;
+          studioCamPitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, studioCamPitch - e.movementY * 0.005));
+      }
+  });
+  wrap.addEventListener('contextmenu', e=>e.preventDefault());
+  if(windowLoaded) animateStudio();
+}
+
+let baseplate=null;
+window.resetBaseplate = function(){
+  if(baseplate) studioScene.remove(baseplate);
+  studioParts.forEach(p=>studioScene.remove(p.mesh));
+  studioParts=[]; selectPart(null);
+  baseplate=new THREE.Mesh(new THREE.BoxGeometry(100,1,100), new THREE.MeshLambertMaterial({color:0x4a934a}));
+  baseplate.position.set(0,-0.5,0); studioScene.add(baseplate);
+};
+
+function selectPart(part){
+  if(selectedPart && selectedPart.mesh.material.emissive) selectedPart.mesh.material.emissive.setHex(0x000000);
+  selectedPart=part;
+  if(part && part.mesh.material.emissive) part.mesh.material.emissive.setHex(0x333333);
+  updatePropsPanel();
+}
+
+let partCounter=0;
+window.insertPart = function(type){
+  partCounter++;
+  const colors = {block:'#A3A2A5', kill:'#D22B2B', checkpoint:'#019245', win:'#F5A623', text:'#ffffff'};
+  let data = { id:'p'+partCounter, type, x:0, y:type==='text'?3:1, z:0, sx:3, sy:1, sz:3, color:colors[type], text:type==='text'?'Text':'' };
+  
+  let mesh;
+  if(type==='text'){
+    const canvas=document.createElement('canvas'); canvas.width=256; canvas.height=64;
+    const ctx=canvas.getContext('2d'); ctx.fillStyle='transparent'; ctx.fillRect(0,0,256,64);
+    ctx.fillStyle='#333'; ctx.font='bold 32px Arial'; ctx.textAlign='center'; ctx.fillText(data.text,128,45);
+    mesh=new THREE.Mesh(new THREE.PlaneGeometry(3,1), new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(canvas), transparent:true, side:THREE.DoubleSide}));
+  } else if (type==='spawn'){
+      mesh=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.5,0.2,16), new THREE.MeshLambertMaterial({color:0x555555}));
+  } else {
+    mesh=new THREE.Mesh(new THREE.BoxGeometry(data.sx,data.sy,data.sz), new THREE.MeshLambertMaterial({color:data.color}));
+  }
+  
+  const dir = new THREE.Vector3(0,0,-1).applyQuaternion(studioCamera.quaternion);
+  mesh.position.copy(studioCamera.position).addScaledVector(dir, 15);
+  data.x = mesh.position.x; data.y = mesh.position.y; data.z = mesh.position.z;
+  
+  studioScene.add(mesh);
+  const part={data, mesh, anchored:true};
+  studioParts.push(part); selectPart(part);
+};
+
+window.studioAction = function(action){
+  if(!selectedPart) return;
+  if(action==='rotate') selectedPart.mesh.rotation.y += Math.PI/4;
+  if(action==='delete'){ studioScene.remove(selectedPart.mesh); studioParts = studioParts.filter(p=>p!==selectedPart); selectPart(null); }
+  if(action==='duplicate'){
+    const d = JSON.parse(JSON.stringify(selectedPart.data)); partCounter++; d.id='p'+partCounter; d.x+=3;
+    const mesh=new THREE.Mesh(new THREE.BoxGeometry(d.sx,d.sy,d.sz), new THREE.MeshLambertMaterial({color:d.color}));
+    mesh.position.set(d.x,d.y,d.z); studioScene.add(mesh);
+    const part={data:d, mesh, anchored:true}; studioParts.push(part); selectPart(part);
+  }
+};
+window.toggleAnchor = function(){
+  if(!selectedPart) return;
+  selectedPart.anchored = !selectedPart.anchored; showToast(selectedPart.anchored ? 'Anchored' : 'Unanchored');
+};
+
+function updatePropsPanel(){
+  const empty=document.getElementById('propsEmpty'), form=document.getElementById('propsForm');
+  if(!selectedPart){ empty.style.display='block'; form.style.display='none'; return; }
+  empty.style.display='none'; form.style.display='block';
+  const d=selectedPart.data;
+  document.getElementById('propX').value=d.x.toFixed(1); document.getElementById('propY').value=d.y.toFixed(1); document.getElementById('propZ').value=d.z.toFixed(1);
+  document.getElementById('sizeX').value=d.sx; document.getElementById('sizeY').value=d.sy; document.getElementById('sizeZ').value=d.sz;
+  document.getElementById('propColor').value=d.color; document.getElementById('propText').value=d.text||'';
+  document.getElementById('textRow').style.display = d.type==='text' ? 'block':'none';
+}
+
+window.applyPropChange = function(){
+  if(!selectedPart) return;
+  const d=selectedPart.data;
+  d.x=+document.getElementById('propX').value; d.y=+document.getElementById('propY').value; d.z=+document.getElementById('propZ').value;
+  d.sx=+document.getElementById('sizeX').value; d.sy=+document.getElementById('sizeY').value; d.sz=+document.getElementById('sizeZ').value;
+  d.color=document.getElementById('propColor').value; d.text=document.getElementById('propText').value;
+
+  selectedPart.mesh.position.set(d.x,d.y,d.z);
+  if(d.type==='text'){
+      // Simplified update text logic
+      const canvas=document.createElement('canvas'); canvas.width=256; canvas.height=64;
+      const ctx=canvas.getContext('2d'); ctx.fillStyle='transparent'; ctx.fillRect(0,0,256,64);
+      ctx.fillStyle='#333'; ctx.font='bold 32px Arial'; ctx.textAlign='center'; ctx.fillText(d.text,128,45);
+      selectedPart.mesh.material.map = new THREE.CanvasTexture(canvas);
+  } else if(d.type!=='spawn') {
+    selectedPart.mesh.geometry.dispose(); selectedPart.mesh.geometry = new THREE.BoxGeometry(d.sx,d.sy,d.sz);
+    selectedPart.mesh.material.color.set(d.color);
+  }
+};
+
+function animateStudio(){
+  studioAnimId=requestAnimationFrame(animateStudio);
+  
+  // Freecam Fly Logic
+  let smvx = 0, smvz = 0, smvy = 0;
+  if(document.getElementById('studioOverlay').classList.contains('active') && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+      if(keys['KeyW']) smvz -= 1;
+      if(keys['KeyS']) smvz += 1;
+      if(keys['KeyA']) smvx -= 1;
+      if(keys['KeyD']) smvx += 1;
+      if(keys['KeyE']) smvy += 1;
+      if(keys['KeyQ']) smvy -= 1;
+  }
+
+  if(smvx !== 0 || smvz !== 0 || smvy !== 0){
+      const speed = 0.6;
+      const sforward = new THREE.Vector3(Math.sin(studioCamYaw), 0, Math.cos(studioCamYaw));
+      const sright = new THREE.Vector3(Math.sin(studioCamYaw+Math.PI/2), 0, Math.cos(studioCamYaw+Math.PI/2));
+      studioCamPos.addScaledVector(sforward, smvz*speed);
+      studioCamPos.addScaledVector(sright, smvx*speed);
+      studioCamPos.y += smvy*speed;
+  }
+
+  studioCamera.position.copy(studioCamPos);
+  studioCamera.rotation.set(studioCamPitch, studioCamYaw, 0);
+
+  studioParts.forEach(p=>{
+    if(!p.anchored){ p.mesh.position.y -= 0.1; p.data.y = p.mesh.position.y; }
+  });
+  studioRenderer.render(studioScene, studioCamera);
+}
+
+window.openPublishModal = function(){
+  if(studioParts.length===0){ showToast('Add parts before publishing.'); return; }
+  document.getElementById('publishModal').classList.add('active');
+};
+window.closePublishModal = function(){ document.getElementById('publishModal').classList.remove('active'); };
+
+window.confirmPublish = async function(){
+  if (!isAuthComplete || !auth.currentUser) return showToast('Database connection missing.');
+  
+  const name=document.getElementById('pubName').value.trim() || 'Untitled Place';
+  const desc=document.getElementById('pubDesc').value.trim();
+  const thumb=document.getElementById('pubThumb').value.trim();
+  const id='game_'+Date.now();
+  
+  try {
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'games', id), {
+      id, name, desc, thumb, creatorId: auth.currentUser.uid,
+      gameType: currentStudioGameType || 'obby',
+      bgMusic: studioGameBgMusicUrl || null,
+      parts: studioParts.map(p=>({...p.data}))
+    });
+    window.closePublishModal(); window.closeStudio();
+    if (studioBgAudio) { studioBgAudio.pause(); studioBgAudio = null; }
+    showToast('Game published permanently!');
+    window.renderCommunityGrids(); window.showPage('home');
+  } catch(error) { console.error(error); showToast('Error saving to Cloud.'); }
+};
+
+/* ==================================================================
+   CATALOG SYSTEM: shop, purchases, equipping, and the Catalog Studio
+   (Face / Accessory / Clothing item creator)
+   ================================================================== */
+let catalogItemsCache = {};      // id -> catalog item doc
+let myOwnedIds = [];             // ids of items the current user has bought
+let myEquippedIds = [];          // ids of items the current user has equipped
+let myEquippedData = [];         // full data for equipped items (sent to other players)
+const textureLoaderCat = new THREE.TextureLoader();
+const gltfLoaderCat = new THREE.GLTFLoader();
+
+function rebuildMyEquippedData(){
+  myEquippedData = myEquippedIds.map(id=>catalogItemsCache[id]).filter(Boolean).map(it=>({
+    id: it.id, category: it.category, name: it.name,
+    imageUrl: it.imageUrl || null, slot: it.slot || null, offX: it.offX||0, offY: it.offY||0,
+    glbUrl: it.glbUrl || null, accX: it.accX||0, accY: it.accY||0, accZ: it.accZ||0, accRotY: it.accRotY||0
+  }));
+}
+
+/* ---- Rendering catalog items onto ANY player visuals group (local or remote) ---- */
+function clearCatalogVisuals(visualsGroup){
+  if(!visualsGroup) return;
+  const toRemove = visualsGroup.children.filter(c => c.userData && c.userData.isCatalogItem);
+  toRemove.forEach(c => visualsGroup.remove(c));
+}
+
+function positionDecalPlane(plane, item, isFace){
+  const slot = item.slot || 'front';
+  const offX = Math.max(-1, Math.min(1, item.offX || 0));
+  const offY = Math.max(-1, Math.min(1, item.offY || 0));
+  const baseY = isFace ? 2.4 : 1.25;
+  const baseZ = isFace ? 0.34 : 0.34;
+  const spanXY = isFace ? 0.22 : 0.35;
+  const spanFlat = 0.3;
+  if (slot === 'front') {
+    plane.position.set(offX*spanXY, baseY + offY*spanXY, baseZ);
+    plane.rotation.set(0,0,0);
+  } else if (slot === 'back') {
+    plane.position.set(offX*spanXY, baseY + offY*spanXY, -baseZ);
+    plane.rotation.set(0, Math.PI, 0);
+  } else if (slot === 'top') {
+    plane.position.set(offX*spanFlat, baseY + (isFace?0.4:0.95), offY*spanFlat*0.4);
+    plane.rotation.set(-Math.PI/2, 0, 0);
+  } else if (slot === 'bottom') {
+    plane.position.set(offX*spanFlat, baseY - (isFace?0.4:0.95), offY*spanFlat*0.4);
+    plane.rotation.set(Math.PI/2, 0, 0);
+  }
+}
+
+function applyEquippedItemsToVisual(visualsGroup, equippedList, ownerGroupForLoadBar){
+  if(!visualsGroup) return;
+  clearCatalogVisuals(visualsGroup);
+  (equippedList||[]).forEach(item=>{
+    if(item.category==='face' || item.category==='clothing'){
+      if(!item.imageUrl) return;
+      textureLoaderCat.load(item.imageUrl, tex=>{
+        const isFace = item.category==='face';
+        const size = isFace ? 0.5 : 0.9;
+        const plane = new THREE.Mesh(new THREE.PlaneGeometry(size,size), new THREE.MeshBasicMaterial({map:tex, transparent:true, side:THREE.DoubleSide}));
+        plane.userData.isCatalogItem = true;
+        positionDecalPlane(plane, item, isFace);
+        visualsGroup.add(plane);
+      }, undefined, ()=>{ console.warn('Catalog image failed to load:', item.imageUrl); });
+    } else if(item.category==='accessory'){
+      if(!item.glbUrl) return;
+      const bar = ownerGroupForLoadBar ? showAccessoryLoadBar(ownerGroupForLoadBar) : null;
+      if (bar && ownerGroupForLoadBar) ownerGroupForLoadBar.userData.activeLoadBar = bar;
+      gltfLoaderCat.load(item.glbUrl, gltf=>{
+        const model = gltf.scene;
+        model.userData.isCatalogItem = true;
+        const box = new THREE.Box3().setFromObject(model);
+        const size = new THREE.Vector3(); box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        model.scale.setScalar(0.5/maxDim);
+        model.position.set(item.accX||0, 2.5+(item.accY||0), item.accZ||0);
+        model.rotation.y = item.accRotY||0;
+        visualsGroup.add(model);
+        if(bar){ hideAccessoryLoadBar(bar); if(ownerGroupForLoadBar) ownerGroupForLoadBar.userData.activeLoadBar = null; }
+      }, undefined, err=>{ console.error('Accessory GLB failed to load:', err); if(bar){ hideAccessoryLoadBar(bar); if(ownerGroupForLoadBar) ownerGroupForLoadBar.userData.activeLoadBar = null; } });
+    }
+  });
+}
+
+/* ---- Catalog Shop page ---- */
+window.renderCatalogGrid = async function(){
+  if (!isAuthComplete || !auth.currentUser) return;
+  const grid = document.getElementById('catalogGrid');
+  const note = document.getElementById('catalogNote');
+  try {
+    const col = collection(db, 'artifacts', appId, 'public', 'data', 'catalog');
+    const snap = await getDocs(col);
+    catalogItemsCache = {};
+    const items = [];
+    snap.forEach(d => { const data = { id: d.id, ...d.data() }; catalogItemsCache[d.id] = data; items.push(data); });
+    if (items.length === 0) {
+      grid.innerHTML=''; note.style.display='block'; note.textContent='No catalog items yet — be the first creator!';
+    } else {
+      note.style.display='none';
+      grid.innerHTML = items.map(it=>{
+        const owned = myOwnedIds.includes(it.id);
+        const equipped = myEquippedIds.includes(it.id);
+        const thumbInner = it.imageUrl ? `<img src="${escapeHtml(it.imageUrl)}">` : `<div class="acc-placeholder">🎒</div>`;
+        const btnLabel = equipped ? 'Equipped ✓' : (owned ? 'Equip' : (it.price>0 ? (it.price+' R$') : 'Get'));
+        const btnClass = equipped ? 'equipped' : (owned ? 'owned' : '');
+        return `<div class="card">
+          <div class="thumb thumb-catalog">${thumbInner}</div>
+          <div class="info"><div class="title">${escapeHtml(it.name)}</div>
+          <div class="stats"><span class="cat-price">${it.price} R$</span>
+          <button class="cat-buy-btn ${btnClass}" onclick="window.handleCatalogBtn('${it.id}')">${btnLabel}</button></div></div>
+        </div>`;
+      }).join('');
+    }
+    rebuildMyEquippedData();
+    window.renderInventory();
+    if (avatarModel) applyEquippedItemsToVisual(avatarModel, myEquippedData, null);
+  } catch(err){ console.error(err); showToast('Failed to load catalog.'); }
+};
+
+window.handleCatalogBtn = function(id){
+  if (myOwnedIds.includes(id)) window.toggleEquip(id);
+  else window.buyItem(id);
+};
+
+window.buyItem = async function(id){
+  if (!isAuthComplete || !auth.currentUser) return;
+  const item = catalogItemsCache[id];
+  if (!item) return;
+  if (myOwnedIds.includes(id)) return;
+  const robuxEl = document.getElementById('robuxCount');
+  let current = parseInt((robuxEl.textContent||'0').replace(/,/g,'')) || 0;
+  if (current < item.price) { showToast('Not enough Robux!'); return; }
+  current -= item.price;
+  robuxEl.textContent = current.toLocaleString();
+  myOwnedIds.push(id);
+  try {
+    await setDoc(doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'profile'), { ownedItems: myOwnedIds }, {merge:true});
+    showToast('Purchased ' + item.name + '!');
+    window.renderCatalogGrid();
+  } catch(e){ console.error(e); showToast('Purchase failed to save.'); }
+};
+
+window.toggleEquip = async function(id){
+  if (myEquippedIds.includes(id)) myEquippedIds = myEquippedIds.filter(x=>x!==id);
+  else myEquippedIds.push(id);
+  try { await setDoc(doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'profile'), { equippedItems: myEquippedIds }, {merge:true}); } catch(e){ console.error(e); }
+  rebuildMyEquippedData();
+  window.renderCatalogGrid();
+  if (playerVisuals) applyEquippedItemsToVisual(playerVisuals, myEquippedData, null);
+  if (avatarModel) applyEquippedItemsToVisual(avatarModel, myEquippedData, null);
+};
+
+window.renderInventory = function(){
+  const grid = document.getElementById('inventoryGrid');
+  if (!grid) return;
+  if (myOwnedIds.length === 0) { grid.innerHTML = '<p style="color:var(--muted);font-size:12px;grid-column:1/-1">You don\'t own any catalog items yet. Visit the Catalog tab!</p>'; return; }
+  grid.innerHTML = myOwnedIds.map(id=>{
+    const it = catalogItemsCache[id]; if(!it) return '';
+    const equipped = myEquippedIds.includes(id);
+    const inner = it.imageUrl ? `<img src="${escapeHtml(it.imageUrl)}">` : `<div class="acc-ico">🎒</div>`;
+    return `<div class="inv-item ${equipped?'equipped':''}" onclick="window.toggleEquip('${id}')">${inner}<div>${escapeHtml(it.name)}</div></div>`;
+  }).join('');
+};
+
+/* ---- Catalog Item Studio (create Face / Accessory / Clothing items) ---- */
+let catStudioScene, catStudioCamera, catStudioRenderer, catStudioModel, catStudioAnimId;
+let catStudioCamYaw=0, catStudioCamPitch=0.15, catStudioDragging=false;
+let catCategory='face', catSlot='front';
+let catImgObj=null, catImageOffX=0, catImageOffY=0, catPreviewPlane=null;
+let catAccessoryModel=null, catAccX=0, catAccY=0, catAccZ=0, catAccRotY=0, catAccGlbUrl=null;
+
+window.openCatalogStudio = function(){
+  document.getElementById('catalogStudioOverlay').classList.add('active');
+  catImgObj=null; catImageOffX=0; catImageOffY=0; catAccessoryModel=null; catAccGlbUrl=null;
+  catAccX=0; catAccY=0; catAccZ=0; catAccRotY=0; catAccScale=1.0;
+  canvasPanX=0; canvasPanY=0; canvasZoom=1.0;
+  document.getElementById('catImageUrl').value=''; document.getElementById('catGlbUrl').value='';
+  const sl=document.getElementById('accSizeSlider'); if(sl) sl.value='1.0';
+  const sv=document.getElementById('accSizeVal'); if(sv) sv.textContent='1.0';
+  window.setCatCategory('face'); window.setCatSlot('front');
+  if(!catStudioRenderer) initCatStudio(); else resetCatStudioModel();
+  draw2DCanvas();
+  onCatStudioResize();
+  window.addEventListener('resize', onCatStudioResize);
+};
+window.closeCatalogStudio = function(){
+  document.getElementById('catalogStudioOverlay').classList.remove('active');
+  window.removeEventListener('resize', onCatStudioResize);
+};
+function onCatStudioResize(){
+  if(!catStudioRenderer) return;
+  const wrap=document.getElementById('catStudio3D');
+  catStudioCamera.aspect = wrap.clientWidth/wrap.clientHeight; catStudioCamera.updateProjectionMatrix();
+  catStudioRenderer.setSize(wrap.clientWidth, wrap.clientHeight);
+}
+function initCatStudio(){
+  const wrap = document.getElementById('catStudio3D');
+  catStudioScene = new THREE.Scene(); catStudioScene.background = new THREE.Color(0x2b2b2b);
+  catStudioCamera = new THREE.PerspectiveCamera(45, wrap.clientWidth/wrap.clientHeight, 0.1, 100);
+  catStudioRenderer = new THREE.WebGLRenderer({antialias:true});
+  catStudioRenderer.setSize(wrap.clientWidth, wrap.clientHeight);
+  wrap.appendChild(catStudioRenderer.domElement);
+  catStudioScene.add(new THREE.AmbientLight(0xffffff,0.7));
+  const d = new THREE.DirectionalLight(0xffffff,0.7); d.position.set(2,5,3); catStudioScene.add(d);
+  resetCatStudioModel();
+
+  let lastTX=0, lastTY=0;
+  wrap.addEventListener('mousedown', ()=>{ catStudioDragging=true; });
+  window.addEventListener('mouseup', ()=>{ catStudioDragging=false; });
+  wrap.addEventListener('mousemove', e=>{
+    if(catStudioDragging){ catStudioCamYaw -= e.movementX*0.007; catStudioCamPitch = Math.max(-0.4,Math.min(0.8,catStudioCamPitch - e.movementY*0.007)); }
+  });
+  wrap.addEventListener('touchstart', e=>{ catStudioDragging=true; if(e.touches[0]){lastTX=e.touches[0].clientX;lastTY=e.touches[0].clientY;} }, {passive:true});
+  wrap.addEventListener('touchend', ()=>{ catStudioDragging=false; }, {passive:true});
+  wrap.addEventListener('touchmove', e=>{
+    if(catStudioDragging && e.touches[0]){
+      const dx=e.touches[0].clientX-lastTX, dy=e.touches[0].clientY-lastTY;
+      catStudioCamYaw -= dx*0.007; catStudioCamPitch = Math.max(-0.4,Math.min(0.8,catStudioCamPitch - dy*0.007));
+      lastTX=e.touches[0].clientX; lastTY=e.touches[0].clientY;
+    }
+  }, {passive:true});
+  if(windowLoaded) animateCatStudio();
+}
+function resetCatStudioModel(){
+  if(catStudioModel) catStudioScene.remove(catStudioModel);
+  catStudioModel = new THREE.Group();
+  if(customAvatarScene){
+    catStudioModel.add(customAvatarScene.clone());
+  } else {
+    const box = new THREE.Mesh(new THREE.BoxGeometry(1,2,0.6), new THREE.MeshLambertMaterial({color:state.shirt}));
+    box.position.y=1; catStudioModel.add(box);
+  }
+  catStudioScene.add(catStudioModel);
+  catPreviewPlane=null; catAccessoryModel=null;
+}
+function animateCatStudio(){
+  catStudioAnimId = requestAnimationFrame(animateCatStudio);
+  if(!document.getElementById('catalogStudioOverlay').classList.contains('active') || !catStudioRenderer) return;
+  const dist=3.2;
+  const cx = Math.sin(catStudioCamYaw)*dist*Math.cos(catStudioCamPitch);
+  const cz = Math.cos(catStudioCamYaw)*dist*Math.cos(catStudioCamPitch);
+  const cy = 1.2 + Math.sin(catStudioCamPitch)*dist;
+  catStudioCamera.position.set(cx,cy,cz);
+  catStudioCamera.lookAt(0,1.15,0);
+  catStudioRenderer.render(catStudioScene, catStudioCamera);
+}
+
+window.setCatCategory = function(cat){
+  catCategory = cat;
+  document.querySelectorAll('.cat-tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.cat===cat));
+  document.getElementById('catPanelImage').style.display = (cat==='accessory') ? 'none' : 'block';
+  document.getElementById('catPanelAccessory').style.display = (cat==='accessory') ? 'block' : 'none';
+  updateCatPreviewPlane();
+};
+window.setCatSlot = function(slot){
+  catSlot = slot;
+  document.querySelectorAll('.slot-btn').forEach(b=>b.classList.toggle('active', b.dataset.slot===slot));
+  updateCatPreviewPlane();
+};
+
+window.loadCatImage = function(){
+  const url = document.getElementById('catImageUrl').value.trim();
+  if(!url) return showToast('Paste an image URL first.');
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = ()=>{ catImgObj = img; catImageOffX=0; catImageOffY=0; draw2DCanvas(); updateCatPreviewPlane(); showToast('Image loaded!'); };
+  img.onerror = ()=> showToast('Could not load that image URL (must allow cross-origin access).');
+  img.src = url;
+};
+// Infinite canvas state
+let canvasPanX = 0, canvasPanY = 0, canvasZoom = 1.0;
+function draw2DCanvas(){
+  const cv = document.getElementById('catStudio2DCanvas');
+  if(!cv) return;
+  const ctx = cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  // Draw infinite grid
+  ctx.save();
+  ctx.translate(canvasPanX, canvasPanY);
+  ctx.scale(canvasZoom, canvasZoom);
+  const gridStep = 80;
+  const gridColor = 'rgba(255,255,255,0.07)';
+  ctx.strokeStyle = gridColor; ctx.lineWidth = 1/canvasZoom;
+  const offX = ((-canvasPanX/canvasZoom) % gridStep);
+  const offY = ((-canvasPanY/canvasZoom) % gridStep);
+  for(let gx = -gridStep + offX; gx < cv.width/canvasZoom + gridStep; gx += gridStep){
+    ctx.beginPath(); ctx.moveTo(gx, -canvasPanY/canvasZoom - 500); ctx.lineTo(gx, -canvasPanY/canvasZoom + cv.height/canvasZoom + 500); ctx.stroke();
+  }
+  for(let gy = -gridStep + offY; gy < cv.height/canvasZoom + gridStep; gy += gridStep){
+    ctx.beginPath(); ctx.moveTo(-canvasPanX/canvasZoom - 500, gy); ctx.lineTo(-canvasPanX/canvasZoom + cv.width/canvasZoom + 500, gy); ctx.stroke();
+  }
+  // Draw face zone outline
+  ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.lineWidth=2/canvasZoom;
+  ctx.strokeRect(-60,-60,120,120);
+  ctx.fillStyle='rgba(255,255,255,.04)'; ctx.fillRect(-60,-60,120,120);
+  // Crosshair
+  ctx.strokeStyle='rgba(255,255,255,.5)'; ctx.lineWidth=1/canvasZoom;
+  ctx.beginPath(); ctx.moveTo(-8,0); ctx.lineTo(8,0); ctx.moveTo(0,-8); ctx.lineTo(0,8); ctx.stroke();
+  // Image
+  if(catImgObj){
+    const size=110;
+    ctx.drawImage(catImgObj, catImageOffX-size/2, catImageOffY-size/2, size, size);
+  }
+  ctx.restore();
+}
+function updateCatPreviewPlane(){
+  if(!catStudioModel) return;
+  if(catPreviewPlane){ catStudioModel.remove(catPreviewPlane); catPreviewPlane=null; }
+  if(!catImgObj || catCategory==='accessory') return;
+  const tex = new THREE.Texture(catImgObj); tex.needsUpdate = true;
+  const isFace = catCategory==='face';
+  const size = isFace? 0.5 : 0.9;
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(size,size), new THREE.MeshBasicMaterial({map:tex, transparent:true, side:THREE.DoubleSide}));
+  const fakeItem = { slot: catSlot, offX: catImageOffX/100, offY: -catImageOffY/100 };
+  positionDecalPlane(plane, fakeItem, isFace);
+  catStudioModel.add(plane);
+  catPreviewPlane = plane;
+}
+(function setupCat2DDrag(){
+  const cv = document.getElementById('catStudio2DCanvas');
+  let dragging=false, panMode=false, lastMX=0, lastMY=0;
+  function toWorld(ex, ey){
+    const rect=cv.getBoundingClientRect();
+    const scaleX = cv.width / rect.width, scaleY = cv.height / rect.height;
+    const px = (ex - rect.left) * scaleX, py = (ey - rect.top) * scaleY;
+    return { x: (px - canvasPanX)/canvasZoom, y: (py - canvasPanY)/canvasZoom };
+  }
+  function start(e){
+    const t = e.touches ? e.touches[0] : e;
+    panMode = !catImgObj || e.button === 2;
+    dragging = true;
+    lastMX = t.clientX; lastMY = t.clientY;
+    if (!panMode && catImgObj) {
+      const w = toWorld(t.clientX, t.clientY);
+      catImageOffX = catCategory==='clothing' ? 0 : w.x;
+      catImageOffY = w.y;
+      draw2DCanvas(); updateCatPreviewPlane();
+    }
+  }
+  function move(e){
+    if(!dragging) return;
+    e.preventDefault();
+    const t = e.touches ? e.touches[0] : e;
+    const dx = t.clientX - lastMX, dy = t.clientY - lastMY;
+    lastMX = t.clientX; lastMY = t.clientY;
+    if(panMode || !catImgObj){
+      // Pan the canvas
+      const rect=cv.getBoundingClientRect();
+      canvasPanX += dx * (cv.width/rect.width);
+      canvasPanY += dy * (cv.height/rect.height);
+    } else {
+      // Move image in world space
+      catImageOffX += catCategory==='clothing' ? 0 : dx*(cv.width/cv.getBoundingClientRect().width)/canvasZoom;
+      catImageOffY += dy*(cv.height/cv.getBoundingClientRect().height)/canvasZoom;
+    }
+    draw2DCanvas(); updateCatPreviewPlane();
+  }
+  function end(){ dragging=false; panMode=false; }
+  // Scroll to zoom
+  cv.addEventListener('wheel', e=>{
+    e.preventDefault();
+    const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+    canvasZoom = Math.max(0.1, Math.min(10, canvasZoom * zoomFactor));
+    draw2DCanvas();
+  }, {passive:false});
+  cv.addEventListener('mousedown', start); cv.addEventListener('mousemove', move); window.addEventListener('mouseup', end);
+  cv.addEventListener('contextmenu', e=>e.preventDefault());
+  cv.addEventListener('touchstart', start, {passive:false}); cv.addEventListener('touchmove', move, {passive:false}); cv.addEventListener('touchend', end);
+})();
+
+window.loadCatAccessory = function(){
+  // Reset size slider
+  catAccScale = 1.0;
+  const slider = document.getElementById('accSizeSlider');
+  if (slider) slider.value = '1.0';
+  const valEl = document.getElementById('accSizeVal');
+  if (valEl) valEl.textContent = '1.0';
+  // Remove old model
+  if (catAccessoryModel) { catStudioModel.remove(catAccessoryModel); catAccessoryModel = null; }
+  const url = document.getElementById('catGlbUrl').value.trim();
+  if(!url) return showToast('Paste a raw GitHub .glb link first.');
+  showToast('Loading accessory...');
+  gltfLoaderCat.load(url, gltf=>{
+    if(catAccessoryModel) catStudioModel.remove(catAccessoryModel);
+    const model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3(); box.getSize(size);
+    const maxDim = Math.max(size.x,size.y,size.z)||1;
+    model.scale.setScalar(0.5/maxDim);
+    catAccX=0; catAccY=0; catAccZ=0; catAccRotY=0;
+    model.position.set(0, 2.5, 0);
+    catStudioModel.add(model);
+    catAccessoryModel = model;
+    catAccGlbUrl = url;
+    showToast('Accessory loaded!');
+  }, undefined, err=>{ console.error(err); showToast('Failed to load GLB — check the raw GitHub link.'); });
+};
+window.moveAccessory = function(dx,dy,dz){
+  if(!catAccessoryModel) return;
+  catAccX+=dx; catAccY+=dy; catAccZ+=dz;
+  catAccessoryModel.position.set(catAccX, 2.5+catAccY, catAccZ);
+};
+window.rotateAccessory = function(){
+  if(!catAccessoryModel) return;
+  catAccRotY += Math.PI/8;
+  catAccessoryModel.rotation.y = catAccRotY;
+};
+
+// ---- Accessory size slider ----
+let catAccScale = 1.0;
+window.resizeAccessory = function(val) {
+  catAccScale = parseFloat(val);
+  document.getElementById('accSizeVal').textContent = catAccScale.toFixed(2);
+  if(!catAccessoryModel) return;
+  const box = new THREE.Box3().setFromObject(catAccessoryModel);
+  const size = new THREE.Vector3(); box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+  catAccessoryModel.scale.setScalar((0.5 / maxDim) * catAccScale);
+};
+
+// ---- GAME TYPE MODAL ----
+let selectedGameType = 'obby';
+window.openGameTypeModal = function() {
+  selectedGameType = 'obby';
+  document.querySelectorAll('.game-type-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('gt-obby').classList.add('selected');
+  document.getElementById('gameTypeModal').classList.add('active');
+};
+window.closeGameTypeModal = function() {
+  document.getElementById('gameTypeModal').classList.remove('active');
+};
+window.selectGameType = function(type) {
+  selectedGameType = type;
+  document.querySelectorAll('.game-type-card').forEach(c => c.classList.remove('selected'));
+  document.getElementById('gt-' + type).classList.add('selected');
+};
+window.confirmGameType = function() {
+  window.closeGameTypeModal();
+  window.openStudio(selectedGameType);
+};
+
+// Override openStudio to accept game type
+const _originalOpenStudio = window.openStudio;
+window.openStudio = function(gameType) {
+  const type = gameType || 'obby';
+  document.getElementById('studioOverlay').classList.add('active');
+  if(!studioRenderer) initStudio();
+  else window.resetBaseplate();
+  onStudioResize(); window.addEventListener('resize', onStudioResize);
+  // Show/hide toolboxes based on type
+  document.getElementById('killerTools').style.display = (type === 'survival') ? 'block' : 'none';
+  document.getElementById('featuredTools').style.display = (type === 'featured') ? 'block' : 'none';
+  // Update studio title
+  const titles = {obby:'🏃 Obby Studio', survival:'🔪 Survival the Killer Studio', featured:'⭐ Featured Studio'};
+  document.querySelector('#studioOverlay .studio-topbar .title').textContent = 'BlockVerse Studio — ' + (titles[type] || 'Studio');
+  currentStudioGameType = type;
+};
+let currentStudioGameType = 'obby';
+
+// ---- KILLER NPCs ----
+let killerNPCs = []; // {mesh, glb, url, bobPhase, speed, group}
+window.insertKillerNPC = function(kind, url) {
+  const group = new THREE.Group();
+  group.position.set(0, 1, -10);
+  studioScene.add(group);
+  // Placeholder mesh while GLB loads
+  const placeholder = new THREE.Mesh(new THREE.CylinderGeometry(0.5,0.5,2,8), new THREE.MeshLambertMaterial({color: kind==='jeff'?0xCC2222:0x666600}));
+  group.add(placeholder);
+  const npcData = { group, placeholder, kind, url, bobPhase: Math.random()*Math.PI*2, loaded: false, data: {id:'npc_'+Date.now(), type:'killer_npc', kind, url, x:0,y:1,z:-10} };
+  killerNPCs.push(npcData);
+  studioParts.push({ data: npcData.data, mesh: group, anchored: true, isNPC: true });
+  showToast('Loading ' + (kind==='jeff'?'Jeff the Killer':'Siren Head') + '...');
+  const loader2 = new THREE.GLTFLoader();
+  loader2.load(url, (gltf) => {
+    group.remove(placeholder);
+    const model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model); const sz = new THREE.Vector3(); box.getSize(sz);
+    model.scale.setScalar(2.0 / Math.max(sz.x,sz.y,sz.z));
+    group.add(model);
+    npcData.loaded = true;
+    showToast((kind==='jeff'?'Jeff':'Siren Head') + ' loaded!');
+  }, undefined, err => { showToast('Failed to load NPC GLB.'); });
+};
+
+// ---- CARS ----
+window.insertCar = function(kind, url) {
+  const group = new THREE.Group();
+  group.position.set(5, 0.5, -10);
+  studioScene.add(group);
+  const placeholder = new THREE.Mesh(new THREE.BoxGeometry(3,1,5), new THREE.MeshLambertMaterial({color:0xCC0000}));
+  group.add(placeholder);
+  const d = {id:'car_'+Date.now(), type:'car', kind, url, x:5,y:0.5,z:-10};
+  studioParts.push({ data: d, mesh: group, anchored: true });
+  const loader3 = new THREE.GLTFLoader();
+  loader3.load(url, (gltf) => {
+    group.remove(placeholder);
+    const model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model); const sz = new THREE.Vector3(); box.getSize(sz);
+    model.scale.setScalar(3.0 / Math.max(sz.x,sz.y,sz.z));
+    group.add(model);
+    showToast('Car loaded!');
+  }, undefined, () => showToast('Failed to load car GLB.'));
+};
+
+// ---- GLB ON PART ----
+window.openGlbPartModal = function() {
+  if (!selectedPart) return showToast('Select a part first!');
+  document.getElementById('glbPartModal').classList.add('active');
+};
+window.closeGlbPartModal = function() {
+  document.getElementById('glbPartModal').classList.remove('active');
+};
+window.confirmGlbOnPart = function() {
+  if (!selectedPart) return showToast('No part selected.');
+  const url = document.getElementById('glbPartUrl').value.trim();
+  if (!url) return showToast('Enter a GLB URL.');
+  window.closeGlbPartModal();
+  showToast('Loading GLB onto part...');
+  const loader4 = new THREE.GLTFLoader();
+  loader4.load(url, (gltf) => {
+    const model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model); const sz = new THREE.Vector3(); box.getSize(sz);
+    const scale = Math.max(selectedPart.data.sx, selectedPart.data.sy, selectedPart.data.sz) / Math.max(sz.x,sz.y,sz.z,1);
+    model.scale.setScalar(scale);
+    selectedPart.mesh.add(model);
+    selectedPart.data.glbUrl = url;
+    showToast('GLB loaded on part!');
+  }, undefined, () => showToast('Failed to load GLB. Check the raw GitHub link.'));
+};
+
+// ---- STUDIO BACKGROUND MUSIC ----
+let studioBgAudio = null;
+let studioGameBgMusicUrl = null;
+window.loadStudioBgMusic = function() {
+  const url = document.getElementById('studioBgMusicUrl').value.trim();
+  if (!url) return showToast('Enter an MP3 URL.');
+  if (studioBgAudio) { studioBgAudio.pause(); studioBgAudio = null; }
+  studioBgAudio = new Audio(url);
+  studioBgAudio.loop = true;
+  studioBgAudio.volume = 0.4;
+  studioBgAudio.play().then(() => {
+    document.getElementById('audioStatus').textContent = '🎵 Playing (looped)';
+    studioGameBgMusicUrl = url;
+    showToast('Background music loaded!');
+  }).catch(e => {
+    document.getElementById('audioStatus').textContent = '⚠️ Failed to play.';
+    showToast('Could not play audio. Check URL or browser autoplay.');
+  });
+};
+window.stopStudioBgMusic = function() {
+  if (studioBgAudio) { studioBgAudio.pause(); studioBgAudio.currentTime = 0; studioBgAudio = null; }
+  document.getElementById('audioStatus').textContent = 'Stopped.';
+};
+
+window.openCatalogPublishModal = function(){
+  if(catCategory!=='accessory' && !catImgObj) return showToast('Load an image before publishing.');
+  if(catCategory==='accessory' && !catAccessoryModel) return showToast('Load an accessory GLB before publishing.');
+  document.getElementById('catalogPublishModal').style.display='flex';
+};
+window.closeCatalogPublishModal = function(){ document.getElementById('catalogPublishModal').style.display='none'; };
+
+window.confirmCatalogPublish = async function(){
+  if (!isAuthComplete || !auth.currentUser) return showToast('Database connection missing.');
+  const name = document.getElementById('catPubName').value.trim() || 'Untitled Item';
+  const price = Math.max(0, parseInt(document.getElementById('catPubPrice').value) || 0);
+  const id = 'cat_' + Date.now();
+  const docData = { id, name, price, category: catCategory, creatorId: auth.currentUser.uid };
+  if (catCategory === 'accessory') {
+    docData.glbUrl = catAccGlbUrl; docData.accX = catAccX; docData.accY = catAccY; docData.accZ = catAccZ; docData.accRotY = catAccRotY;
+  } else {
+    docData.imageUrl = document.getElementById('catImageUrl').value.trim();
+    docData.slot = catSlot; docData.offX = catImageOffX/100; docData.offY = -catImageOffY/100;
+  }
+  try {
+    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'catalog', id), docData);
+    window.closeCatalogPublishModal();
+    window.closeCatalogStudio();
+    showToast('Item published to Catalog!');
+    window.renderCatalogGrid();
+    window.showPage('catalog');
+  } catch(e){ console.error(e); showToast('Failed to publish item.'); }
+};
+
+// Start logic when Window finishes initializing
+window.onload = function() {
+    windowLoaded = true;
+    
+    if (customAvatarScene) {
+        initAvatarPreview();
+        applyAvatarColors();
+    } else {
+        initAvatarPreview(); // Will just setup scene and wait
+    }
+    
+    // Auth Initialization Loop
+    signInAnonymously(auth).then(async () => {
+      isAuthComplete = true;
+      await loadProfile(); // load custom username + owned/equipped catalog items
+      window.renderCommunityGrids();
+      window.renderCatalogGrid();
+    }).catch((error) => {
+      document.getElementById('communityNote').textContent = "Failed to connect to Firebase database.";
+    });
+    
+    // Color customization is disabled: every player keeps the standard BlockVerse
+    // color scheme (state.shirt/pants/skin below are fixed, never edited by the UI).
+    applyAvatarColors();
+};
+
+function applyColorsToGLB(model) {
+    if(!model) return;
+    model.traverse(child => {
+        if (child.isMesh && child.material) {
+            const n = child.name.toLowerCase();
+            // Attempt to tint R6 limbs based on Roblox naming conventions
+            if (n.includes('head') || n.includes('arm')) {
+                if(child.material.color) child.material.color.set(state.skin);
+            } else if (n.includes('torso')) {
+                if(child.material.color) child.material.color.set(state.shirt);
+            } else if (n.includes('leg')) {
+                if(child.material.color) child.material.color.set(state.pants);
+            } else {
+                // Fallback generic tint if names don't match
+                if(child.material.color) child.material.color.set(state.shirt);
+            }
+        }
+    });
+}
+
+// Cosmetic swatches for fallback
+function applyAvatarColors(){
+  // Apply to preview model
+  if(avatarModel) applyColorsToGLB(avatarModel);
+  // Apply to in-game player if it exists
+  if(playerVisuals) applyColorsToGLB(playerVisuals);
+  
+  // Fallback UI coloring (if elements exist)
+  const hd = document.getElementById('p-head');
+  if(hd) {
+      hd.style.background=state.skin;
+      document.getElementById('p-torso').style.background=state.shirt;
+      document.getElementById('p-armL').style.background=state.skin; document.getElementById('p-armR').style.background=state.skin;
+      document.getElementById('p-legL').style.background=state.pants; document.getElementById('p-legR').style.background=state.pants;
+  }
+}
+// NOTE: buildSwatches / color editing has been intentionally removed - skin, shirt
+// and pants colors are fixed constants in `state` above and cannot be changed by players.
+window.saveAvatar = function(){ showToast('Avatar updated locally!'); };
+
+/* ---------------- CHAT TOGGLE ---------------- */
+window.toggleChat = function(){
+  const panel = document.getElementById('chatPanel');
+  const btn = document.getElementById('chatToggleBtn');
+  const hidden = panel.classList.toggle('hidden');
+  btn.textContent = hidden ? '💬 Show Chat' : '💬 Hide Chat';
+};
+
+</script>
+</body>
+</html>
