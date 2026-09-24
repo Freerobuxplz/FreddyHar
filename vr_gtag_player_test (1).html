@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>VR GTag Player Rig Test</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #111;
+            font-family: 'Inter', sans-serif;
+            color: white;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            pointer-events: none; /* Let clicks pass through to the canvas */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+        
+        .panel {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            pointer-events: auto; /* Enable clicks on the panel */
+            border: 1px solid #444;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 300px;
+        }
+
+        .header {
+            font-size: 1.2rem;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 5px;
+            color: #4ade80;
+        }
+
+        .status-text {
+            font-size: 0.9rem;
+            color: #ccc;
+            text-align: center;
+            min-height: 1.5em;
+        }
+
+        button {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #2563eb;
+        }
+        
+        button:disabled {
+            background-color: #4b5563;
+            color: #9ca3af;
+            cursor: not-allowed;
+        }
+
+        #vr-button-container {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            pointer-events: auto;
+        }
+        
+        .bone-list {
+            max-height: 150px;
+            overflow-y: auto;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 5px;
+            display: none; /* Hidden until rigging starts */
+        }
+        
+        .bone-item {
+            padding: 5px;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+            font-size: 0.8rem;
+        }
+        
+        .bone-item:hover {
+            background-color: #333;
+        }
+        
+        .bone-item:last-child {
+            border-bottom: none;
+        }
+        
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 0.8rem;
+            color: #aaa;
+            pointer-events: none;
+        }
+
+        /* Styling for the VR button injected by Three.js */
+        #VRButton {
+            border: 2px solid white !important;
+            border-radius: 8px !important;
+            background: rgba(0,0,0,0.8) !important;
+            font-family: 'Inter', sans-serif !important;
+        }
+    </style>
+    <!-- Import maps polyfill -->
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <div class="panel" id="main-panel">
+            <div class="header">Player Rigging Setup</div>
+            <div id="status-message" class="status-text">Loading model...</div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button id="rig-left-btn" style="flex: 1;" disabled>Rig Left Arm</button>
+                <button id="rig-right-btn" style="flex: 1;" disabled>Rig Right Arm</button>
+            </div>
+            
+            <div id="bone-selector" class="bone-list">
+                <!-- Bones will be populated here -->
+            </div>
+            
+            <button id="cancel-rig-btn" style="display: none; background-color: #ef4444;">Cancel Selection</button>
+        </div>
+    </div>
+    
+    <div class="controls-hint">
+        <strong>Desktop Controls:</strong><br>
+        Left Click + Drag: Rotate Camera<br>
+        Right Click + Drag: Pan Camera<br>
+        Scroll: Zoom
+    </div>
+
+    <!-- Container for Three.js VR button -->
+    <div id="vr-button-container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { VRButton } from 'three/addons/webxr/VRButton.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { CCDIKSolver } from 'three/addons/animation/CCDIKSolver.js';
+
+        // --- Application State ---
+        const state = {
+            modelLoaded: false,
+            playerModel: null,
+            skinnedMesh: null, // Store reference to the specific mesh that has bones
+            ikSolvers: [], // Array to hold our real IK solvers
+            bones: [],
+            riggingState: 'idle', // 'idle', 'selecting_left_upper', 'selecting_left_lower', 'selecting_left_wrist', etc.
+            currentArm: null, // 'left' or 'right'
+            rigData: {
+                left: { upper: null, lower: null, wrist: null, targetBone: null, configured: false },
+                right: { upper: null, lower: null, wrist: null, targetBone: null, configured: false }
+            }
+        };
+
+        // --- Three.js Setup ---
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x55aaee); // Brighter Sky blue background
+
+        // Add a simple fog for depth
+        scene.fog = new THREE.Fog(0x55aaee, 5, 50);
+
+        // Set 'near' clipping plane to 0.01 (very close) to prevent the screen going black if geometry gets near the camera
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 100);
+        // Position camera slightly back and up to see the spawn point
+        camera.position.set(0, 1.6, 2); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.xr.enabled = true; // Enable WebXR
+        container.appendChild(renderer.domElement);
+        
+        // Add VR Button
+        document.getElementById('vr-button-container').appendChild(VRButton.createButton(renderer));
+
+        // Desktop Controls (OrbitControls for testing when not in VR)
+        const orbitControls = new OrbitControls(camera, renderer.domElement);
+        orbitControls.target.set(0, 1, 0);
+        orbitControls.update();
+
+        // --- Lighting ---
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+        hemiLight.position.set(0, 20, 0);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight.position.set(5, 10, -5);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+        
+        // Add strong ambient light so shadows aren't pitch black
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+
+        // --- Environment ---
+        // Baseplate
+        const floorGeometry = new THREE.PlaneGeometry(50, 50);
+        const floorMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x4ade80, // Light green
+            roughness: 0.8,
+            metalness: 0.1
+        });
+        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+        
+        // Add a grid for scale reference
+        const gridHelper = new THREE.GridHelper(50, 50, 0x000000, 0x000000);
+        gridHelper.material.opacity = 0.2;
+        gridHelper.material.transparent = true;
+        scene.add(gridHelper);
+
+        // --- Player Rig (VR Root) ---
+        // We put the camera and controllers inside a group so we can move the whole player
+        const playerRig = new THREE.Group();
+        playerRig.position.set(0, 0, 0); // Spawn point
+        scene.add(playerRig);
+        playerRig.add(camera);
+
+        // --- VR Controllers ---
+        // We create visual spheres for the controllers as requested
+        const controllerGeometry = new THREE.SphereGeometry(0.05, 16, 16);
+        const leftControllerMat = new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true });
+        const rightControllerMat = new THREE.MeshBasicMaterial({ color: 0x0000ff, wireframe: true });
+
+        const leftControllerMesh = new THREE.Mesh(controllerGeometry, leftControllerMat);
+        const rightControllerMesh = new THREE.Mesh(controllerGeometry, rightControllerMat);
+
+        // Get actual VR controllers
+        const controllerLeft = renderer.xr.getController(0); // Usually left
+        const controllerRight = renderer.xr.getController(1); // Usually right
+        
+        playerRig.add(controllerLeft);
+        playerRig.add(controllerRight);
+
+        // Attach visual spheres to the controllers
+        controllerLeft.add(leftControllerMesh);
+        controllerRight.add(rightControllerMesh);
+        
+        // Setup controller grips (for hand models, not strictly needed for this test but good practice)
+        const controllerGrip1 = renderer.xr.getControllerGrip(0);
+        playerRig.add(controllerGrip1);
+        const controllerGrip2 = renderer.xr.getControllerGrip(1);
+        playerRig.add(controllerGrip2);
+
+        // --- UI Interactions ---
+        const uiElements = {
+            status: document.getElementById('status-message'),
+            btnLeft: document.getElementById('rig-left-btn'),
+            btnRight: document.getElementById('rig-right-btn'),
+            btnCancel: document.getElementById('cancel-rig-btn'),
+            boneSelector: document.getElementById('bone-selector')
+        };
+
+        function updateStatus(msg) {
+            if(uiElements.status) {
+                uiElements.status.textContent = msg;
+            }
+        }
+
+        // --- Load Player Model ---
+        let skeletonHelper;
+        
+        const loader = new GLTFLoader();
+        // The raw github URL needs to be the specific raw file URL
+        const modelUrl = 'https://raw.githubusercontent.com/Freerobuxplz/FreddyHar/main/gtag_fan_game_player_model_rigged.glb';
+        
+        updateStatus('Downloading player model...');
+        
+        loader.load(
+            modelUrl,
+            (gltf) => {
+                state.playerModel = gltf.scene;
+                
+                // Move the model forward slightly! 
+                // If it spawns at (0,0,0) and the camera is near (0,0,0), you will be inside the head = Black Screen.
+                state.playerModel.position.set(0, 0, -1);
+                
+                // Ensure model casts/receives shadows and extract the SkinnedMesh
+                state.playerModel.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                    if (child.isSkinnedMesh && !state.skinnedMesh) {
+                        // Grab the first SkinnedMesh. Real IK requires a SkinnedMesh.
+                        state.skinnedMesh = child; 
+                    }
+                    if (child.isBone) {
+                        state.bones.push(child);
+                    }
+                });
+
+                // Add skeleton helper to visualize bones
+                skeletonHelper = new THREE.SkeletonHelper(state.playerModel);
+                skeletonHelper.visible = false; // Hide by default, can toggle for debugging
+                scene.add(skeletonHelper);
+
+                // Add model to the player rig so it moves with the player
+                playerRig.add(state.playerModel);
+                
+                state.modelLoaded = true;
+                updateStatus('Model loaded. Ready to configure rig.');
+                document.getElementById('rig-left-btn').disabled = false;
+                document.getElementById('rig-right-btn').disabled = false;
+                
+                populateBoneList();
+                
+                console.log("Found bones:", state.bones.map(b => b.name));
+            },
+            (xhr) => {
+                const percent = Math.round((xhr.loaded / xhr.total) * 100);
+                // Total might be 0 if length computable is false
+                if(percent > 0) {
+                     updateStatus(`Downloading... ${percent}%`);
+                }
+            },
+            (error) => {
+                console.error('An error happened loading the model', error);
+                updateStatus('Error loading model. Check console.');
+                
+                // Fallback: Create a simple dummy model so the test still works visually
+                createDummyModel();
+            }
+        );
+
+        function createDummyModel() {
+            console.log("Creating dummy model as fallback");
+            const dummyGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+            const dummyMat = new THREE.MeshStandardMaterial({color: 0x888888});
+            state.playerModel = new THREE.Mesh(dummyGeo, dummyMat);
+            state.playerModel.position.set(0, 1, 0); // Put body up a bit
+            playerRig.add(state.playerModel);
+            updateStatus('Failed to load model. Using dummy box. Rigging disabled.');
+        }
+
+        function populateBoneList() {
+            uiElements.boneSelector.innerHTML = '';
+            
+            if (state.bones.length === 0) {
+                uiElements.boneSelector.innerHTML = '<div style="padding:10px;text-align:center;">No bones found in model.</div>';
+                return;
+            }
+
+            state.bones.forEach((bone, index) => {
+                const el = document.createElement('div');
+                el.className = 'bone-item';
+                el.textContent = bone.name || `Bone ${index}`;
+                el.onclick = () => handleBoneSelection(bone);
+                uiElements.boneSelector.appendChild(el);
+            });
+        }
+
+        function startRigging(side) {
+            state.currentArm = side;
+            state.riggingState = `selecting_${side}_upper`;
+            
+            uiElements.btnLeft.style.display = 'none';
+            uiElements.btnRight.style.display = 'none';
+            uiElements.btnCancel.style.display = 'block';
+            uiElements.boneSelector.style.display = 'block';
+            
+            updateStatus(`Select ${side.toUpperCase()} UPPER ARM bone from list.`);
+            
+            if(skeletonHelper) skeletonHelper.visible = true;
+        }
+
+        function cancelRigging() {
+            state.riggingState = 'idle';
+            state.currentArm = null;
+            
+            uiElements.btnLeft.style.display = 'block';
+            uiElements.btnRight.style.display = 'block';
+            uiElements.btnCancel.style.display = 'none';
+            uiElements.boneSelector.style.display = 'none';
+            
+            updateStatus('Configuration cancelled.');
+            if(skeletonHelper) skeletonHelper.visible = false;
+        }
+
+        function handleBoneSelection(bone) {
+            const side = state.currentArm;
+            
+            if (state.riggingState.includes('upper')) {
+                state.rigData[side].upper = bone;
+                state.riggingState = `selecting_${side}_lower`;
+                updateStatus(`Upper arm selected. Now select ${side.toUpperCase()} LOWER/MIDDLE ARM bone.`);
+            } 
+            else if (state.riggingState.includes('lower')) {
+                state.rigData[side].lower = bone;
+                state.riggingState = `selecting_${side}_wrist`;
+                updateStatus(`Lower arm selected. Now select ${side.toUpperCase()} WRIST/HAND bone.`);
+            }
+            else if (state.riggingState.includes('wrist')) {
+                state.rigData[side].wrist = bone;
+                
+                setupRealIK(side);
+                
+                state.rigData[side].configured = true;
+                
+                updateStatus(`${side.toUpperCase()} arm rigged successfully with Real IK!`);
+                
+                // Reset UI after short delay
+                setTimeout(() => {
+                    cancelRigging();
+                    updateStatus('Ready.');
+                }, 2000);
+            }
+        }
+        
+        function setupRealIK(side) {
+            if (!state.skinnedMesh) {
+                console.warn("No SkinnedMesh found in model. IK might fail.");
+                return;
+            }
+
+            const arm = state.rigData[side];
+            const skeleton = state.skinnedMesh.skeleton;
+
+            // 1. Find the indices of the selected bones in the skeleton array
+            const upperIndex = skeleton.bones.indexOf(arm.upper);
+            const lowerIndex = skeleton.bones.indexOf(arm.lower);
+            const wristIndex = skeleton.bones.indexOf(arm.wrist);
+
+            if (upperIndex === -1 || lowerIndex === -1 || wristIndex === -1) {
+                console.error("Selected bones are not part of the main skeleton.");
+                return;
+            }
+
+            // 2. Create a "Target" bone. The IK solver will try to move the wrist to this target.
+            const targetBone = new THREE.Bone();
+            targetBone.name = `IK_Target_${side}`;
+            // Add it to the scene graph so we can freely move it with the VR controller
+            scene.add(targetBone); 
+
+            // 3. Inject the target bone into the existing skeleton
+            skeleton.bones.push(targetBone);
+            skeleton.boneInverses.push(new THREE.Matrix4());
+            const targetIndex = skeleton.bones.length - 1;
+            
+            arm.targetBone = targetBone;
+
+            // 4. Configure the IK chain (from Hand up to Shoulder)
+            const iks = [{
+                target: targetIndex,
+                effector: wristIndex,
+                links: [
+                    { index: lowerIndex }, // Link 1: Elbow
+                    { index: upperIndex }  // Link 2: Shoulder
+                ]
+            }];
+
+            // 5. Create the solver
+            const solver = new CCDIKSolver(state.skinnedMesh, iks);
+            state.ikSolvers.push(solver);
+        }
+
+        uiElements.btnLeft.onclick = () => startRigging('left');
+        uiElements.btnRight.onclick = () => startRigging('right');
+        uiElements.btnCancel.onclick = cancelRigging;
+
+
+        // --- Inverse Kinematics (Simplified) & Update Loop ---
+        
+        function updateArmIK(side, controllerMesh) {
+            const arm = state.rigData[side];
+            if (!arm.configured || !arm.targetBone) return;
+
+            // Get world position and rotation of the VR controller
+            const targetPos = new THREE.Vector3();
+            controllerMesh.getWorldPosition(targetPos);
+            
+            const targetQuat = new THREE.Quaternion();
+            controllerMesh.getWorldQuaternion(targetQuat);
+            
+            // Move the IK target bone to the controller.
+            // The CCDIKSolver in the render loop will handle bending the elbow!
+            arm.targetBone.position.copy(targetPos);
+            arm.targetBone.quaternion.copy(targetQuat);
+        }
+
+        // --- Render Loop ---
+        renderer.setAnimationLoop(function () {
+            
+            // 1. Make the player body look at the camera (head tracking)
+            if (state.modelLoaded && state.playerModel) {
+                
+                const cameraPos = new THREE.Vector3();
+                camera.getWorldPosition(cameraPos);
+                
+                // Get the position of the player model
+                const modelPos = new THREE.Vector3();
+                state.playerModel.getWorldPosition(modelPos);
+                
+                // Create a target position that shares the model's Y height
+                // so the body only rotates on the Y axis (yaw), not pitch/roll.
+                const lookTarget = new THREE.Vector3(cameraPos.x, modelPos.y, cameraPos.z);
+                
+                // Make the root of the player model look at the flattened camera position
+                state.playerModel.lookAt(lookTarget);
+                
+                // You might need to offset rotation depending on model orientation
+                // state.playerModel.rotateY(Math.PI); 
+            }
+
+            // 2. Update Arm Tracking
+            if (renderer.xr.isPresenting) {
+                // Only try to track arms if we are actually in VR and have controllers tracked
+                updateArmIK('left', controllerLeft);
+                updateArmIK('right', controllerRight);
+                
+            } else {
+                 // For desktop testing, just pulse the spheres or move them in a circle
+                 const time = Date.now() * 0.001;
+                 controllerLeft.position.set(-0.5, 1 + Math.sin(time)*0.2, -1.0);
+                 controllerRight.position.set(0.5, 1 + Math.cos(time)*0.2, -1.0);
+                 
+                 updateArmIK('left', controllerLeft);
+                 updateArmIK('right', controllerRight);
+            }
+            
+            // 3. Update all Real IK Solvers
+            state.ikSolvers.forEach(solver => solver.update());
+
+            // 4. Render
+            renderer.render(scene, camera);
+        });
+
+        // --- Handle Window Resize ---
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+    </script>
+</body>
+</html>
