@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>VR GTag Maker &amp; Player</title>
+    
+    <!-- This script block holds the saved level state. It gets updated when downloading. -->
+    <script id="scene-state" type="application/json">
+{
+    "player": {
+        "scale": [
+            0.17623572791520478,
+            0.2450514408732782,
+            0.21993105508327662
+        ]
+    },
+    "spawn": {
+        "position": [
+            0,
+            0.4044081451996718,
+            0.6155817906192111
+        ],
+        "rotation": [
+            0,
+            0,
+            0,
+            "XYZ"
+        ],
+        "scale": [
+            1,
+            1,
+            1
+        ]
+    },
+    "cubes": [
+        {
+            "position": [
+                0.1764696509889056,
+                -0.08559524161307674,
+                2.1980298365745536
+            ],
+            "rotation": [
+                0,
+                0,
+                0,
+                "XYZ"
+            ],
+            "scale": [
+                3.482675395833902,
+                0.10059726203770164,
+                5.393351820388694
+            ],
+            "color": 3900150
+        },
+        {
+            "position": [
+                0.3645191500259699,
+                0.4360281825754546,
+                3.195219591583722
+            ],
+            "rotation": [
+                0,
+                0,
+                0,
+                "XYZ"
+            ],
+            "scale": [
+                2.5399018073182296,
+                1,
+                1.965858403906865
+            ],
+            "color": 3900150
+        }
+    ]
+}
+</script>
+
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #111;
+            font-family: 'Inter', system-ui, sans-serif;
+            color: white;
+            user-select: none;
+        }
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+        
+        /* Editor UI Styles */
+        #editor-ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            pointer-events: auto;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            margin: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .left-panel {
+            width: 250px;
+        }
+
+        .right-panel {
+            width: 300px;
+        }
+
+        .header {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #38bdf8;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        button:hover { background-color: #2563eb; transform: translateY(-1px); }
+        button:active { transform: translateY(1px); }
+        button.active-tool { background-color: #10b981; box-shadow: 0 0 10px rgba(16, 185, 129, 0.4); }
+        button.danger { background-color: #ef4444; }
+        button.danger:hover { background-color: #dc2626; }
+        button.special { background-color: #8b5cf6; }
+        button.special:hover { background-color: #7c3aed; }
+        button:disabled { background-color: #475569; color: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        .toolbar-group {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 5px;
+        }
+
+        .divider {
+            height: 1px;
+            background: rgba(255,255,255,0.1);
+            margin: 10px 0;
+        }
+
+        .prop-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+        }
+
+        input[type="color"] {
+            border: none;
+            width: 40px;
+            height: 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            background: none;
+        }
+
+        .bone-list {
+            max-height: 120px;
+            overflow-y: auto;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            background: rgba(0,0,0,0.3);
+            display: none;
+        }
+        
+        .bone-item {
+            padding: 8px 10px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .bone-item:hover { background-color: rgba(56, 189, 248, 0.2); color: #38bdf8; }
+
+        .status-text {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            text-align: center;
+            min-height: 20px;
+            margin-top: 5px;
+        }
+
+        /* VR Button Positioning */
+        #vr-button-container {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            pointer-events: auto;
+        }
+    </style>
+
+    <!-- Import maps polyfill -->
+    <script async="" src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="editor-ui">
+        <!-- Tools Panel -->
+        <div class="panel left-panel">
+            <div class="header">Level Editor</div>
+            
+            <div class="status-text" style="text-align: left; margin-bottom: 5px;">Transform Tool</div>
+            <div class="toolbar-group">
+                <button id="tool-translate" class="active-tool" onclick="window.setGizmoMode('translate')">Move</button>
+                <button id="tool-rotate" onclick="window.setGizmoMode('rotate')">Rotate</button>
+                <button id="tool-scale" onclick="window.setGizmoMode('scale')" class="">Scale</button>
+            </div>
+            
+            <div class="divider"></div>
+            
+            <button class="special" onclick="window.addCube()">+ Add Collision Cube</button>
+            
+            <div class="divider"></div>
+            
+            <div class="header" style="font-size: 0.9rem;">Selected Object</div>
+            <div id="no-selection-msg" class="status-text" style="text-align: left; display: block;">Click an object to edit it.</div>
+            
+            <div id="properties-panel" style="display: none; flex-direction: column; gap: 10px;">
+                <div class="prop-row">
+                    <span>Type:</span>
+                    <strong id="prop-type" style="color: #38bdf8;">Cube</strong>
+                </div>
+                <div class="prop-row" id="color-prop-row" style="display: flex;">
+                    <span>Color:</span>
+                    <input type="color" id="prop-color" oninput="window.changeObjectColor(this.value)">
+                </div>
+                <button class="danger" id="btn-delete" onclick="window.deleteSelected()" style="display: block;">Delete Object</button>
+            </div>
+        </div>
+
+        <!-- Rigging & Export Panel -->
+        <div class="panel right-panel">
+            <div class="header">Player Rigging</div>
+            <div id="rig-status" class="status-text">Ready.</div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button id="btn-rig-left" style="flex: 1 1 0%; display: block;" onclick="window.startRigging('left')">Rig Left Arm</button>
+                <button id="btn-rig-right" style="flex: 1 1 0%; display: block;" onclick="window.startRigging('right')">Rig Right Arm</button>
+            </div>
+            
+            <div id="bone-selector" class="bone-list" style="display: none;"><div class="bone-item">_rootJoint</div><div class="bone-item">Body_01</div><div class="bone-item">Head_02</div><div class="bone-item">Head_end_034</div><div class="bone-item">ShoulderL_03</div><div class="bone-item">UpperArmL_04</div><div class="bone-item">LowerArmL_05</div><div class="bone-item">HandL_06</div><div class="bone-item">ThumbL_07</div><div class="bone-item">LowerThunbL_08</div><div class="bone-item">MiddleThumbL_09</div><div class="bone-item">UpperThumbL_010</div><div class="bone-item">UpperThumbL_end_035</div><div class="bone-item">PointerL_011</div><div class="bone-item">LowerPointerL_012</div><div class="bone-item">MiddlePointerL_013</div><div class="bone-item">UpperPointerL_014</div><div class="bone-item">UpperPointerL_end_036</div><div class="bone-item">PinkyL_015</div><div class="bone-item">LowerPinkyL_016</div><div class="bone-item">MiddlePinkyL_017</div><div class="bone-item">UpperPinkyL_018</div><div class="bone-item">UpperPinkyL_end_037</div><div class="bone-item">ShoulderR_00</div><div class="bone-item">UpperArmR_019</div><div class="bone-item">LowerArmR_020</div><div class="bone-item">HandR_021</div><div class="bone-item">ThumbR_022</div><div class="bone-item">LowerThunbR_023</div><div class="bone-item">MiddleThumbR_024</div><div class="bone-item">UpperThumbR_025</div><div class="bone-item">UpperThumbR_end_038</div><div class="bone-item">PointerR_026</div><div class="bone-item">LowerPointerR_027</div><div class="bone-item">MiddlePointerR_028</div><div class="bone-item">UpperPointerR_029</div><div class="bone-item">UpperPointerR_end_039</div><div class="bone-item">PinkyR_030</div><div class="bone-item">LowerPinkyR_031</div><div class="bone-item">MiddlePinkyR_032</div><div class="bone-item">UpperPinkyR_033</div><div class="bone-item">UpperPinkyR_end_040</div></div>
+            <button id="btn-cancel-rig" class="danger" style="display: none;" onclick="window.cancelRigging()">Cancel Selection</button>
+
+            <div class="divider"></div>
+            
+            <button class="special" style="font-size: 1.1rem; padding: 12px;" onclick="window.downloadEditedHTML()">
+                💾 Download Edited Game
+            </button>
+        </div>
+    </div>
+
+    <div id="vr-button-container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { VRButton } from 'three/addons/webxr/VRButton.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+        import { CCDIKSolver } from 'three/addons/animation/CCDIKSolver.js';
+
+        // --- Application State ---
+        const state = {
+            modelLoaded: false,
+            playerModel: null, // The actual 3D group of the player
+            skinnedMesh: null,
+            ikSolvers: [],
+            bones: [],
+            riggingState: 'idle',
+            currentArm: null,
+            rigData: {
+                left: { upper: null, lower: null, wrist: null, targetBone: null, configured: false },
+                right: { upper: null, lower: null, wrist: null, targetBone: null, configured: false }
+            },
+            editor: {
+                interactables: [], // Objects that can be clicked/selected
+                cubes: [], // Array of just the cube meshes
+                selectedObject: null,
+                spawnMarker: null
+            },
+            savedConfig: null // Loaded from the JSON script tag
+        };
+
+        // Parse initial state from HTML
+        try {
+            const stateStr = document.getElementById('scene-state').textContent;
+            state.savedConfig = JSON.parse(stateStr);
+        } catch (e) {
+            console.error("Failed to parse scene state, using defaults.", e);
+            state.savedConfig = { player: {scale:[1,1,1]}, spawn: {position:[0,0,2], rotation:[0,0,0], scale:[1,1,1]}, cubes: [] };
+        }
+
+        // --- Three.js Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x55aaee);
+        scene.fog = new THREE.Fog(0x55aaee, 10, 50);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 100);
+        // Start editor camera pulled back slightly
+        camera.position.set(0, 3, 5); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        renderer.xr.enabled = true;
+        container.appendChild(renderer.domElement);
+        
+        document.getElementById('vr-button-container').appendChild(VRButton.createButton(renderer));
+
+        // Orbit Controls (for moving around the editor)
+        const orbitControls = new OrbitControls(camera, renderer.domElement);
+        orbitControls.target.set(0, 1, 0);
+        orbitControls.update();
+
+        // Transform Gizmo (for moving objects)
+        const transformControl = new TransformControls(camera, renderer.domElement);
+        transformControl.addEventListener('dragging-changed', (event) => {
+            orbitControls.enabled = !event.value; // Disable camera orbit while dragging gizmo
+        });
+        scene.add(transformControl);
+
+        // Raycaster for selecting objects
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // --- Lighting & Environment ---
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.8);
+        hemiLight.position.set(0, 20, 0);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        dirLight.position.set(5, 10, -5);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+        
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        // Floor Baseplate
+        const floorGeometry = new THREE.PlaneGeometry(100, 100);
+        const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x86efac, roughness: 0.8, metalness: 0.1 });
+        const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+        
+        const gridHelper = new THREE.GridHelper(100, 100, 0x000000, 0x000000);
+        gridHelper.material.opacity = 0.1;
+        gridHelper.material.transparent = true;
+        scene.add(gridHelper);
+
+        // --- Player Rig (VR Root) ---
+        const playerRig = new THREE.Group();
+        scene.add(playerRig);
+        playerRig.add(camera); // Camera lives inside the rig so moving rig moves camera
+
+        // --- Editor Spawn Marker ---
+        // This visually represents where the player will start in VR
+        const spawnGeo = new THREE.BoxGeometry(0.5, 1.8, 0.5);
+        const spawnMat = new THREE.MeshBasicMaterial({ color: 0x10b981, wireframe: true, transparent: true, opacity: 0.8 });
+        state.editor.spawnMarker = new THREE.Mesh(spawnGeo, spawnMat);
+        state.editor.spawnMarker.userData.type = 'SpawnPoint';
+        state.editor.spawnMarker.userData.isSelectable = true;
+        
+        // Add a "front" indicator to the spawn point
+        const frontIndicator = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.5, 4), new THREE.MeshBasicMaterial({color: 0x10b981}));
+        frontIndicator.rotation.x = Math.PI / 2;
+        frontIndicator.position.set(0, 0, -0.4);
+        state.editor.spawnMarker.add(frontIndicator);
+        
+        scene.add(state.editor.spawnMarker);
+        state.editor.interactables.push(state.editor.spawnMarker);
+
+        // Load spawn location from saved state
+        const sSpawn = state.savedConfig.spawn;
+        if(sSpawn) {
+            state.editor.spawnMarker.position.fromArray(sSpawn.position);
+            state.editor.spawnMarker.rotation.fromArray(sSpawn.rotation);
+            state.editor.spawnMarker.scale.fromArray(sSpawn.scale);
+        }
+
+        // --- VR Controllers ---
+        const controllerGeometry = new THREE.SphereGeometry(0.06, 16, 16);
+        const leftControllerMat = new THREE.MeshBasicMaterial({ color: 0xff4444, wireframe: true });
+        const rightControllerMat = new THREE.MeshBasicMaterial({ color: 0x4444ff, wireframe: true });
+
+        const leftControllerMesh = new THREE.Mesh(controllerGeometry, leftControllerMat);
+        const rightControllerMesh = new THREE.Mesh(controllerGeometry, rightControllerMat);
+
+        const controllerLeft = renderer.xr.getController(0); 
+        const controllerRight = renderer.xr.getController(1); 
+        
+        playerRig.add(controllerLeft);
+        playerRig.add(controllerRight);
+
+        controllerLeft.add(leftControllerMesh);
+        controllerRight.add(rightControllerMesh);
+
+        // Rebuild level from saved state
+        function rebuildMap() {
+            if(!state.savedConfig.cubes) return;
+            state.savedConfig.cubes.forEach(cubeData => {
+                const geo = new THREE.BoxGeometry(1, 1, 1);
+                const mat = new THREE.MeshStandardMaterial({ color: cubeData.color });
+                const mesh = new THREE.Mesh(geo, mat);
+                
+                mesh.position.fromArray(cubeData.position);
+                mesh.rotation.fromArray(cubeData.rotation);
+                mesh.scale.fromArray(cubeData.scale);
+                
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                mesh.userData.type = 'Cube';
+                mesh.userData.isSelectable = true;
+                
+                scene.add(mesh);
+                state.editor.cubes.push(mesh);
+                state.editor.interactables.push(mesh);
+            });
+        }
+        rebuildMap();
+
+        let skeletonHelper;
+        const loader = new GLTFLoader();
+        const modelUrl = 'https://raw.githubusercontent.com/Freerobuxplz/FreddyHar/main/gtag_fan_game_player_model_rigged.glb';
+        
+        document.getElementById('rig-status').textContent = 'Downloading player model...';
+        
+        loader.load(
+            modelUrl,
+            (gltf) => {
+                state.playerModel = gltf.scene;
+                
+                // Position model inside the VR Rig
+                state.playerModel.position.set(0, 0, 0);
+                
+                // Apply saved scale
+                if(state.savedConfig.player && state.savedConfig.player.scale) {
+                    state.playerModel.scale.fromArray(state.savedConfig.player.scale);
+                }
+
+                // Add an invisible hitbox to the player model so it's easier to select with raycaster
+                const box = new THREE.Box3().setFromObject(state.playerModel);
+                const hitboxGeo = new THREE.BoxGeometry(
+                    box.max.x - box.min.x,
+                    box.max.y - box.min.y,
+                    box.max.z - box.min.z
+                );
+                const hitboxMat = new THREE.MeshBasicMaterial({visible: false});
+                const hitbox = new THREE.Mesh(hitboxGeo, hitboxMat);
+                hitbox.position.copy(box.getCenter(new THREE.Vector3()));
+                hitbox.userData.type = 'PlayerModel';
+                hitbox.userData.isSelectable = true;
+                hitbox.userData.parentModel = state.playerModel; // Reference back to main model
+                
+                state.playerModel.add(hitbox);
+                state.editor.interactables.push(hitbox);
+                
+                state.playerModel.traverse((child) => {
+                    if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
+                    if (child.isSkinnedMesh && !state.skinnedMesh) { state.skinnedMesh = child; }
+                    if (child.isBone) { state.bones.push(child); }
+                });
+
+                skeletonHelper = new THREE.SkeletonHelper(state.playerModel);
+                skeletonHelper.visible = false;
+                scene.add(skeletonHelper);
+
+                playerRig.add(state.playerModel);
+                
+                state.modelLoaded = true;
+                document.getElementById('rig-status').textContent = 'Model loaded. Ready to configure.';
+                document.getElementById('btn-rig-left').disabled = false;
+                document.getElementById('btn-rig-right').disabled = false;
+                
+                populateBoneList();
+            },
+            undefined,
+            (error) => {
+                console.error('Error loading model', error);
+                document.getElementById('rig-status').textContent = 'Failed to load model.';
+            }
+        );
+
+        // --- Editor Functions ---
+
+        window.setGizmoMode = function(mode) {
+            transformControl.setMode(mode);
+            document.getElementById('tool-translate').classList.remove('active-tool');
+            document.getElementById('tool-rotate').classList.remove('active-tool');
+            document.getElementById('tool-scale').classList.remove('active-tool');
+            document.getElementById(`tool-${mode}`).classList.add('active-tool');
+        };
+
+        window.addCube = function() {
+            const geo = new THREE.BoxGeometry(1, 1, 1);
+            const mat = new THREE.MeshStandardMaterial({ color: 0x3b82f6 });
+            const mesh = new THREE.Mesh(geo, mat);
+            
+            // Spawn in front of editor camera
+            const spawnPos = new THREE.Vector3(0, 0, -3);
+            spawnPos.applyMatrix4(camera.matrixWorld);
+            spawnPos.y = Math.max(0.5, spawnPos.y); // Keep above ground
+            mesh.position.copy(spawnPos);
+            
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData.type = 'Cube';
+            mesh.userData.isSelectable = true;
+            
+            scene.add(mesh);
+            state.editor.cubes.push(mesh);
+            state.editor.interactables.push(mesh);
+            
+            selectObject(mesh);
+        };
+
+        window.changeObjectColor = function(hexColor) {
+            if(state.editor.selectedObject && state.editor.selectedObject.userData.type === 'Cube') {
+                state.editor.selectedObject.material.color.setHex(parseInt(hexColor.replace('#', '0x')));
+            }
+        };
+
+        window.deleteSelected = function() {
+            const obj = state.editor.selectedObject;
+            if(!obj) return;
+            
+            if(obj.userData.type === 'SpawnPoint' || obj.userData.type === 'PlayerModel') {
+                alert("You cannot delete the core player assets.");
+                return;
+            }
+
+            // Remove from scene and arrays
+            transformControl.detach();
+            scene.remove(obj);
+            state.editor.cubes = state.editor.cubes.filter(c => c !== obj);
+            state.editor.interactables = state.editor.interactables.filter(c => c !== obj);
+            
+            selectObject(null);
+        };
+
+        function selectObject(object) {
+            const propsPanel = document.getElementById('properties-panel');
+            const noSelMsg = document.getElementById('no-selection-msg');
+            
+            if (!object) {
+                transformControl.detach();
+                state.editor.selectedObject = null;
+                propsPanel.style.display = 'none';
+                noSelMsg.style.display = 'block';
+                return;
+            }
+
+            // If we clicked the player hitbox, attach gizmo to the actual player group
+            const targetForGizmo = object.userData.type === 'PlayerModel' ? object.userData.parentModel : object;
+            
+            transformControl.attach(targetForGizmo);
+            state.editor.selectedObject = object;
+
+            noSelMsg.style.display = 'none';
+            propsPanel.style.display = 'flex';
+            document.getElementById('prop-type').textContent = object.userData.type;
+
+            const colorRow = document.getElementById('color-prop-row');
+            const deleteBtn = document.getElementById('btn-delete');
+
+            if(object.userData.type === 'Cube') {
+                colorRow.style.display = 'flex';
+                deleteBtn.style.display = 'block';
+                document.getElementById('prop-color').value = '#' + object.material.color.getHexString();
+            } else {
+                colorRow.style.display = 'none';
+                deleteBtn.style.display = 'none'; // Cannot delete player/spawn
+            }
+        }
+
+        // Pointer Down event for Selection
+        container.addEventListener('pointerdown', (event) => {
+            // Only select if we are NOT in VR
+            if(renderer.xr.isPresenting) return;
+
+            // Calculate mouse position in normalized device coordinates (-1 to +1)
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            
+            // Check intersection with interactables
+            const intersects = raycaster.intersectObjects(state.editor.interactables, false);
+
+            if (intersects.length > 0) {
+                // If gizmo is currently being dragged, don't change selection
+                if(transformControl.dragging) return;
+                
+                selectObject(intersects[0].object);
+            } else {
+                // Clicking on nothing clears selection if not dragging gizmo
+                if(!transformControl.dragging) {
+                    selectObject(null);
+                }
+            }
+        });
+
+        // --- Rigging Functions ---
+
+        function populateBoneList() {
+            const container = document.getElementById('bone-selector');
+            container.innerHTML = '';
+            state.bones.forEach((bone, index) => {
+                const el = document.createElement('div');
+                el.className = 'bone-item';
+                el.textContent = bone.name || `Bone ${index}`;
+                el.onclick = () => handleBoneSelection(bone);
+                container.appendChild(el);
+            });
+        }
+
+        window.startRigging = function(side) {
+            state.currentArm = side;
+            state.riggingState = `selecting_${side}_upper`;
+            
+            document.getElementById('btn-rig-left').style.display = 'none';
+            document.getElementById('btn-rig-right').style.display = 'none';
+            document.getElementById('btn-cancel-rig').style.display = 'block';
+            document.getElementById('bone-selector').style.display = 'block';
+            
+            document.getElementById('rig-status').textContent = `Select ${side.toUpperCase()} UPPER ARM.`;
+            if(skeletonHelper) skeletonHelper.visible = true;
+        };
+
+        window.cancelRigging = function() {
+            state.riggingState = 'idle';
+            state.currentArm = null;
+            
+            document.getElementById('btn-rig-left').style.display = 'block';
+            document.getElementById('btn-rig-right').style.display = 'block';
+            document.getElementById('btn-cancel-rig').style.display = 'none';
+            document.getElementById('bone-selector').style.display = 'none';
+            
+            document.getElementById('rig-status').textContent = 'Configuration cancelled.';
+            if(skeletonHelper) skeletonHelper.visible = false;
+        };
+
+        function handleBoneSelection(bone) {
+            const side = state.currentArm;
+            const statText = document.getElementById('rig-status');
+            
+            if (state.riggingState.includes('upper')) {
+                state.rigData[side].upper = bone;
+                state.riggingState = `selecting_${side}_lower`;
+                statText.textContent = `Now select ${side.toUpperCase()} LOWER ARM.`;
+            } 
+            else if (state.riggingState.includes('lower')) {
+                state.rigData[side].lower = bone;
+                state.riggingState = `selecting_${side}_wrist`;
+                statText.textContent = `Now select ${side.toUpperCase()} WRIST.`;
+            }
+            else if (state.riggingState.includes('wrist')) {
+                state.rigData[side].wrist = bone;
+                
+                setupRealIK(side);
+                state.rigData[side].configured = true;
+                
+                statText.textContent = `${side.toUpperCase()} arm rigged!`;
+                
+                setTimeout(() => { window.cancelRigging(); statText.textContent = 'Ready.'; }, 1500);
+            }
+        }
+        
+        function setupRealIK(side) {
+            if (!state.skinnedMesh) return;
+
+            const arm = state.rigData[side];
+            const skeleton = state.skinnedMesh.skeleton;
+
+            const upperIndex = skeleton.bones.indexOf(arm.upper);
+            const lowerIndex = skeleton.bones.indexOf(arm.lower);
+            const wristIndex = skeleton.bones.indexOf(arm.wrist);
+
+            if (upperIndex === -1 || lowerIndex === -1 || wristIndex === -1) return;
+
+            const targetBone = new THREE.Bone();
+            targetBone.name = `IK_Target_${side}`;
+            scene.add(targetBone); 
+
+            skeleton.bones.push(targetBone);
+            skeleton.boneInverses.push(new THREE.Matrix4());
+            const targetIndex = skeleton.bones.length - 1;
+            arm.targetBone = targetBone;
+
+            const iks = [{
+                target: targetIndex,
+                effector: wristIndex,
+                links: [{ index: lowerIndex }, { index: upperIndex }]
+            }];
+
+            const solver = new CCDIKSolver(state.skinnedMesh, iks);
+            state.ikSolvers.push(solver);
+        }
+
+        function updateArmIK(side, controllerMesh) {
+            const arm = state.rigData[side];
+            if (!arm.configured || !arm.targetBone) return;
+
+            const targetPos = new THREE.Vector3();
+            controllerMesh.getWorldPosition(targetPos);
+            const targetQuat = new THREE.Quaternion();
+            controllerMesh.getWorldQuaternion(targetQuat);
+            
+            arm.targetBone.position.copy(targetPos);
+            arm.targetBone.quaternion.copy(targetQuat);
+        }
+
+        // --- WebXR Events ---
+        
+        renderer.xr.addEventListener('sessionstart', () => {
+            // When entering VR: Hide Editor UI and Gizmos
+            document.getElementById('editor-ui').style.display = 'none';
+            transformControl.detach();
+            state.editor.spawnMarker.visible = false;
+            
+            // Move Player Rig to Spawn Point
+            playerRig.position.copy(state.editor.spawnMarker.position);
+            playerRig.quaternion.copy(state.editor.spawnMarker.quaternion);
+            
+            // Re-center camera (basic VR reset)
+            camera.position.set(0, 1.6, 0); 
+            camera.quaternion.identity();
+        });
+
+        renderer.xr.addEventListener('sessionend', () => {
+            // Exiting VR: Show Editor UI again
+            document.getElementById('editor-ui').style.display = 'flex';
+            state.editor.spawnMarker.visible = true;
+            
+            // Reset player Rig back to origin so editor camera makes sense
+            playerRig.position.set(0,0,0);
+            playerRig.rotation.set(0,0,0);
+        });
+
+        // --- Render Loop ---
+        renderer.setAnimationLoop(function () {
+            
+            // Head Tracking (Body looks at camera Y rotation)
+            if (state.modelLoaded && state.playerModel) {
+                const cameraPos = new THREE.Vector3();
+                camera.getWorldPosition(cameraPos);
+                
+                const modelPos = new THREE.Vector3();
+                state.playerModel.getWorldPosition(modelPos);
+                
+                const lookTarget = new THREE.Vector3(cameraPos.x, modelPos.y, cameraPos.z);
+                
+                // Only make the model look at the camera if it's not exactly on top of it
+                if(lookTarget.distanceTo(modelPos) > 0.01) {
+                     state.playerModel.lookAt(lookTarget);
+                }
+            }
+
+            // Arm Tracking update
+            if (renderer.xr.isPresenting) {
+                updateArmIK('left', controllerLeft);
+                updateArmIK('right', controllerRight);
+            }
+            
+            // Update IK solvers
+            state.ikSolvers.forEach(solver => solver.update());
+
+            renderer.render(scene, camera);
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- Save and Export Logic ---
+        
+        window.downloadEditedHTML = function() {
+            // 1. Gather all scene data
+            const exportState = {
+                player: {
+                    scale: state.playerModel ? state.playerModel.scale.toArray() : [1,1,1]
+                },
+                spawn: {
+                    position: state.editor.spawnMarker.position.toArray(),
+                    rotation: state.editor.spawnMarker.rotation.toArray(),
+                    scale: state.editor.spawnMarker.scale.toArray()
+                },
+                cubes: state.editor.cubes.map(c => ({
+                    position: c.position.toArray(),
+                    rotation: c.rotation.toArray(),
+                    scale: c.scale.toArray(),
+                    color: c.material.color.getHex()
+                }))
+            };
+
+            // 2. Clone the entire HTML document
+            const clone = document.documentElement.cloneNode(true);
+            
+            // 3. Clean up runtime injected elements (canvas, VR button, active CSS classes)
+            clone.querySelector('#canvas-container').innerHTML = '';
+            clone.querySelector('#vr-button-container').innerHTML = '';
+            
+            // Reset UI states in the clone
+            clone.querySelectorAll('.active-tool').forEach(el => el.classList.remove('active-tool'));
+            clone.querySelector('#tool-translate').classList.add('active-tool');
+            clone.querySelector('#properties-panel').style.display = 'none';
+            clone.querySelector('#no-selection-msg').style.display = 'block';
+
+            // 4. Update the JSON script tag inside the cloned HTML with our new layout
+            const scriptTag = clone.querySelector('#scene-state');
+            if(scriptTag) {
+                scriptTag.textContent = '\n' + JSON.stringify(exportState, null, 4) + '\n';
+            }
+
+            // 5. Package as string and download
+            const htmlString = '<!DOCTYPE html>\n<html lang="en">\n' + clone.innerHTML + '\n</html>';
+            const blob = new Blob([htmlString], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'vr_gtag_custom_map.html';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            URL.revokeObjectURL(url);
+            
+            // Briefly notify user
+            const btn = document.querySelector('button[onclick="window.downloadEditedHTML()"]');
+            const oldText = btn.innerHTML;
+            btn.innerHTML = "✅ Downloaded!";
+            setTimeout(() => btn.innerHTML = oldText, 2000);
+        };
+        
+    </script>
+
+</body>
+</html>
