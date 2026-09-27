@@ -1,0 +1,3049 @@
+<?xml version="1.0" encoding="utf-8"?>
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="4">
+  <Item class="Model" referent="REF175">
+    <Properties>
+      <string name="Name">SuperheroTycoon</string>
+    </Properties>
+    <Item class="Part" referent="REF169">
+  <Properties>
+    <string name="Name">Baseplate</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>240</X><Y>1</Y><Z>220</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>0</X><Y>0</Y><Z>-22.5</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.15</R><G>0.5</G><B>0.15</B></Color3>
+    
+  </Properties>
+  
+</Item>
+    <Item class="Script" referent="REF172">
+  <Properties>
+    <string name="Name">LeaderstatsScript</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+game.Players.PlayerAdded:Connect(function(plr)
+	local stats = Instance.new("Folder")
+	stats.Name = "leaderstats"
+	stats.Parent = plr
+
+	local cash = Instance.new("IntValue")
+	cash.Name = "Cash"
+	cash.Value = 0
+	cash.Parent = stats
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+    <Item class="Script" referent="REF173">
+  <Properties>
+    <string name="Name">PlotManagerScript</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local root = script.Parent
+local Plots = root:WaitForChild("Plots")
+local plotList = Plots:GetChildren()
+local playerPlots = {}
+
+local function getFreePlot()
+	for _, plot in ipairs(plotList) do
+		if plot.OwnerId.Value == 0 then
+			return plot
+		end
+	end
+	return nil
+end
+
+local function resetPlot(plot)
+	plot.OwnerId.Value = 0
+	plot.Sign.BillboardGui.TextLabel.Text = "Empty Plot"
+
+	plot.Wall.Transparency = 0
+	plot.Wall.CanCollide = true
+
+	for _, buttonName in ipairs({"BuyWallButton", "BuyDropper2Button", "BuySpeedButton", "BuyJumpButton", "BuyFlightButton"}) do
+		local button = plot:FindFirstChild(buttonName)
+		if button then
+			button.Transparency = 0
+			button.CanCollide = true
+			if not button:FindFirstChild("ClickDetector") then
+				local cd = Instance.new("ClickDetector")
+				cd.Name = "ClickDetector"
+				cd.MaxActivationDistance = 15
+				cd.Parent = button
+			end
+		end
+	end
+
+	plot.Dropper2.Transparency = 1
+	plot.Dropper2.CanCollide = false
+	plot.Dropper2.DropCash.Disabled = true
+
+	for _, obj in ipairs(workspace:GetChildren()) do
+		if obj.Name == "Cash" and obj:GetAttribute("PlotName") == plot.Name then
+			obj:Destroy()
+		end
+	end
+end
+
+local function applyUpgrades(plr, character, plot)
+	local humanoid = character:WaitForChild("Humanoid")
+	if plr:GetAttribute("HasSuperSpeed") then
+		humanoid.WalkSpeed = 50
+	end
+	if plr:GetAttribute("HasSuperJump") then
+		humanoid.JumpPower = 100
+	end
+	if plr:GetAttribute("HasFlightCape") then
+		local template = root:FindFirstChild("FlightCapeTemplate")
+		if template and not plr.Backpack:FindFirstChild(template.Name) and not character:FindFirstChild(template.Name) then
+			local clone = template:Clone()
+			clone.Parent = plr.Backpack
+		end
+	end
+end
+
+game.Players.PlayerAdded:Connect(function(plr)
+	local plot = getFreePlot()
+	if not plot then
+		plr:Kick("All superhero plots are full right now, try again soon!")
+		return
+	end
+
+	plot.OwnerId.Value = plr.UserId
+	plot.Sign.BillboardGui.TextLabel.Text = plr.Name .. "'s Tycoon"
+	playerPlots[plr.UserId] = plot
+
+	plr.CharacterAdded:Connect(function(character)
+		task.wait(1)
+		local hrp = character:WaitForChild("HumanoidRootPart")
+		hrp.CFrame = plot.PlotSpawn.CFrame + Vector3.new(0, 3, 0)
+		applyUpgrades(plr, character, plot)
+	end)
+end)
+
+game.Players.PlayerRemoving:Connect(function(plr)
+	local plot = playerPlots[plr.UserId]
+	if plot then
+		resetPlot(plot)
+		playerPlots[plr.UserId] = nil
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+    <Item class="Tool" referent="REF170">
+  <Properties>
+    <string name="Name">Cape of Flight</string>
+    <bool name="RequiresHandle">false</bool>
+    <bool name="CanBeDropped">false</bool>
+  </Properties>
+  <Item class="LocalScript" referent="REF171">
+  <Properties>
+    <string name="Name">FlightControl</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local tool = script.Parent
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local flying = false
+local bodyVelocity
+
+local function stopFlight()
+	flying = false
+	if bodyVelocity then
+		bodyVelocity:Destroy()
+		bodyVelocity = nil
+	end
+end
+
+tool.Equipped:Connect(function()
+	local character = tool.Parent
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+	local inputConn = UIS.InputBegan:Connect(function(input, processed)
+		if processed then return end
+		if input.KeyCode == Enum.KeyCode.F then
+			flying = not flying
+			local hrp = character:FindFirstChild("HumanoidRootPart")
+			if flying and hrp then
+				bodyVelocity = Instance.new("BodyVelocity")
+				bodyVelocity.MaxForce = Vector3.new(0, math.huge, 0)
+				bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+				bodyVelocity.Parent = hrp
+				if humanoid then
+					humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+				end
+			else
+				stopFlight()
+				if humanoid then
+					humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+				end
+			end
+		end
+	end)
+
+	local heartbeatConn = RunService.Heartbeat:Connect(function()
+		if flying and bodyVelocity and humanoid then
+			local moveDir = humanoid.MoveDirection
+			bodyVelocity.Velocity = Vector3.new(moveDir.X, 0, moveDir.Z) * 50 + Vector3.new(0, 40, 0)
+		end
+	end)
+
+	tool.Unequipped:Connect(function()
+		stopFlight()
+		inputConn:Disconnect()
+		heartbeatConn:Disconnect()
+	end)
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+    <Item class="Folder" referent="REF174">
+  <Properties>
+    <string name="Name">Plots</string>
+  </Properties>
+  <Item class="Model" referent="REF28">
+  <Properties>
+    <string name="Name">Plot1</string>
+  </Properties>
+  <Item class="Part" referent="REF1">
+  <Properties>
+    <string name="Name">PlotSpawn</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.3</float>
+    <Vector3 name="size"><X>6</X><Y>1</Y><Z>6</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-60</X><Y>1</Y><Z>-90</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.1</G><B>0.6</B></Color3>
+    
+  </Properties>
+  
+</Item>
+<Item class="Part" referent="REF3">
+  <Properties>
+    <string name="Name">Dropper</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>4</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-68</X><Y>2.5</Y><Z>-70</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.4</G><B>0.9</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF2">
+  <Properties>
+    <string name="Name">DropCash</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local dropper = script.Parent
+local plot = dropper.Parent
+
+while true do
+	task.wait(2)
+	if plot.OwnerId.Value ~= 0 then
+		local cash = Instance.new("Part")
+		cash.Name = "Cash"
+		cash.Size = Vector3.new(1, 1, 1)
+		cash.Shape = Enum.PartType.Ball
+		cash.BrickColor = BrickColor.new("New Yeller")
+		cash.CanCollide = false
+		cash.Anchored = false
+		cash.CFrame = dropper.CFrame + Vector3.new(0, 4, 0)
+		cash:SetAttribute("PlotName", plot.Name)
+		cash:SetAttribute("Value", 5)
+		cash.Parent = workspace
+		game:GetService("Debris"):AddItem(cash, 10)
+	end
+end
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF5">
+  <Properties>
+    <string name="Name">Dropper2</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">false</bool>
+    <float name="Transparency">1</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>4</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-52</X><Y>2.5</Y><Z>-70</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.6</R><G>0.1</G><B>0.8</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF4">
+  <Properties>
+    <string name="Name">DropCash</string>
+    <bool name="Disabled">true</bool>
+    <ProtectedString name="Source"><![CDATA[
+local dropper = script.Parent
+local plot = dropper.Parent
+
+while true do
+	task.wait(1.5)
+	if plot.OwnerId.Value ~= 0 then
+		local cash = Instance.new("Part")
+		cash.Name = "Cash"
+		cash.Size = Vector3.new(1, 1, 1)
+		cash.Shape = Enum.PartType.Ball
+		cash.BrickColor = BrickColor.new("New Yeller")
+		cash.CanCollide = false
+		cash.Anchored = false
+		cash.CFrame = dropper.CFrame + Vector3.new(0, 4, 0)
+		cash:SetAttribute("PlotName", plot.Name)
+		cash:SetAttribute("Value", 20)
+		cash.Parent = workspace
+		game:GetService("Debris"):AddItem(cash, 10)
+	end
+end
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF7">
+  <Properties>
+    <string name="Name">Collector</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.5</float>
+    <Vector3 name="size"><X>12</X><Y>1</Y><Z>12</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-60</X><Y>0.5</Y><Z>-58</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.8</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF6">
+  <Properties>
+    <string name="Name">CollectCash</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local collector = script.Parent
+local plot = collector.Parent
+local debounce = {}
+
+collector.Touched:Connect(function(hit)
+	if hit.Name == "Cash" and hit:GetAttribute("PlotName") == plot.Name and not debounce[hit] then
+		debounce[hit] = true
+		local ownerId = plot.OwnerId.Value
+		local plr = game.Players:GetPlayerByUserId(ownerId)
+		local value = hit:GetAttribute("Value") or 5
+		hit:Destroy()
+		if plr then
+			local stats = plr:FindFirstChild("leaderstats")
+			if stats then
+				stats.Cash.Value = stats.Cash.Value + value
+			end
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF8">
+  <Properties>
+    <string name="Name">Wall</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>24</X><Y>10</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-60</X><Y>5</Y><Z>-48</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.7</R><G>0.1</G><B>0.1</B></Color3>
+    
+  </Properties>
+  
+</Item>
+<Item class="Part" referent="REF11">
+  <Properties>
+    <string name="Name">BuyWallButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-60</X><Y>2</Y><Z>-52</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.5</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF9">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF10">
+  <Properties>
+    <string name="Name">BuyWall</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 100
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	if stats and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plot.Wall.Transparency = 1
+		plot.Wall.CanCollide = false
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF14">
+  <Properties>
+    <string name="Name">BuyDropper2Button</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-68</X><Y>2</Y><Z>-52</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.2</R><G>0.7</G><B>0.7</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF12">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF13">
+  <Properties>
+    <string name="Name">BuyDropper2</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 400
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	if stats and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plot.Dropper2.Transparency = 0
+		plot.Dropper2.CanCollide = true
+		plot.Dropper2.DropCash.Disabled = false
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF17">
+  <Properties>
+    <string name="Name">BuySpeedButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-68</X><Y>2</Y><Z>-35</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.5</R><G>0.1</G><B>0.7</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF15">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF16">
+  <Properties>
+    <string name="Name">BuySpeed</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 600
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasSuperSpeed") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local character = plr.Character
+	if stats and character and stats.Cash.Value >= cost then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			stats.Cash.Value = stats.Cash.Value - cost
+			humanoid.WalkSpeed = 50
+			plr:SetAttribute("HasSuperSpeed", true)
+			button.Transparency = 1
+			button.CanCollide = false
+			clickDetector:Destroy()
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF20">
+  <Properties>
+    <string name="Name">BuyJumpButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-60</X><Y>2</Y><Z>-35</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.7</G><B>0.3</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF18">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF19">
+  <Properties>
+    <string name="Name">BuyJump</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 900
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasSuperJump") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local character = plr.Character
+	if stats and character and stats.Cash.Value >= cost then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			stats.Cash.Value = stats.Cash.Value - cost
+			humanoid.JumpPower = 100
+			plr:SetAttribute("HasSuperJump", true)
+			button.Transparency = 1
+			button.CanCollide = false
+			clickDetector:Destroy()
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF23">
+  <Properties>
+    <string name="Name">BuyFlightButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-52</X><Y>2</Y><Z>-35</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.1</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF21">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF22">
+  <Properties>
+    <string name="Name">BuyFlight</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 1500
+local root = plot.Parent.Parent
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasFlightCape") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local template = root:FindFirstChild("FlightCapeTemplate")
+	if stats and template and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plr:SetAttribute("HasFlightCape", true)
+		local clone = template:Clone()
+		clone.Parent = plr.Backpack
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF24">
+  <Properties>
+    <string name="Name">Sign</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">false</bool>
+    <Vector3 name="size"><X>1</X><Y>6</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-60</X><Y>5</Y><Z>-95</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.3</R><G>0.3</G><B>0.3</B></Color3>
+  </Properties>
+  <Item class="BillboardGui" referent="REF25">
+    <Properties>
+      <string name="Name">BillboardGui</string>
+      <bool name="AlwaysOnTop">true</bool>
+      <UDim2 name="Size"><XS>0</XS><XO>200</XO><YS>0</YS><YO>50</YO></UDim2>
+      <Vector3 name="StudsOffset"><X>0</X><Y>3</Y><Z>0</Z></Vector3>
+    </Properties>
+    <Item class="TextLabel" referent="REF26">
+      <Properties>
+        <string name="Name">TextLabel</string>
+        <UDim2 name="Size"><XS>1</XS><XO>0</XO><YS>1</YS><YO>0</YO></UDim2>
+        <float name="BackgroundTransparency">1</float>
+        <bool name="TextScaled">true</bool>
+        <Color3 name="TextColor3"><R>1</R><G>1</G><B>1</B></Color3>
+        <string name="Text">Empty Plot</string>
+      </Properties>
+    </Item>
+  </Item>
+</Item>
+<Item class="IntValue" referent="REF27">
+  <Properties>
+    <string name="Name">OwnerId</string>
+    <int name="Value">0</int>
+  </Properties>
+</Item>
+</Item>
+<Item class="Model" referent="REF56">
+  <Properties>
+    <string name="Name">Plot2</string>
+  </Properties>
+  <Item class="Part" referent="REF29">
+  <Properties>
+    <string name="Name">PlotSpawn</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.3</float>
+    <Vector3 name="size"><X>6</X><Y>1</Y><Z>6</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>0</X><Y>1</Y><Z>-90</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.1</G><B>0.6</B></Color3>
+    
+  </Properties>
+  
+</Item>
+<Item class="Part" referent="REF31">
+  <Properties>
+    <string name="Name">Dropper</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>4</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-8</X><Y>2.5</Y><Z>-70</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.4</G><B>0.9</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF30">
+  <Properties>
+    <string name="Name">DropCash</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local dropper = script.Parent
+local plot = dropper.Parent
+
+while true do
+	task.wait(2)
+	if plot.OwnerId.Value ~= 0 then
+		local cash = Instance.new("Part")
+		cash.Name = "Cash"
+		cash.Size = Vector3.new(1, 1, 1)
+		cash.Shape = Enum.PartType.Ball
+		cash.BrickColor = BrickColor.new("New Yeller")
+		cash.CanCollide = false
+		cash.Anchored = false
+		cash.CFrame = dropper.CFrame + Vector3.new(0, 4, 0)
+		cash:SetAttribute("PlotName", plot.Name)
+		cash:SetAttribute("Value", 5)
+		cash.Parent = workspace
+		game:GetService("Debris"):AddItem(cash, 10)
+	end
+end
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF33">
+  <Properties>
+    <string name="Name">Dropper2</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">false</bool>
+    <float name="Transparency">1</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>4</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>8</X><Y>2.5</Y><Z>-70</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.6</R><G>0.1</G><B>0.8</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF32">
+  <Properties>
+    <string name="Name">DropCash</string>
+    <bool name="Disabled">true</bool>
+    <ProtectedString name="Source"><![CDATA[
+local dropper = script.Parent
+local plot = dropper.Parent
+
+while true do
+	task.wait(1.5)
+	if plot.OwnerId.Value ~= 0 then
+		local cash = Instance.new("Part")
+		cash.Name = "Cash"
+		cash.Size = Vector3.new(1, 1, 1)
+		cash.Shape = Enum.PartType.Ball
+		cash.BrickColor = BrickColor.new("New Yeller")
+		cash.CanCollide = false
+		cash.Anchored = false
+		cash.CFrame = dropper.CFrame + Vector3.new(0, 4, 0)
+		cash:SetAttribute("PlotName", plot.Name)
+		cash:SetAttribute("Value", 20)
+		cash.Parent = workspace
+		game:GetService("Debris"):AddItem(cash, 10)
+	end
+end
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF35">
+  <Properties>
+    <string name="Name">Collector</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.5</float>
+    <Vector3 name="size"><X>12</X><Y>1</Y><Z>12</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>0</X><Y>0.5</Y><Z>-58</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.8</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF34">
+  <Properties>
+    <string name="Name">CollectCash</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local collector = script.Parent
+local plot = collector.Parent
+local debounce = {}
+
+collector.Touched:Connect(function(hit)
+	if hit.Name == "Cash" and hit:GetAttribute("PlotName") == plot.Name and not debounce[hit] then
+		debounce[hit] = true
+		local ownerId = plot.OwnerId.Value
+		local plr = game.Players:GetPlayerByUserId(ownerId)
+		local value = hit:GetAttribute("Value") or 5
+		hit:Destroy()
+		if plr then
+			local stats = plr:FindFirstChild("leaderstats")
+			if stats then
+				stats.Cash.Value = stats.Cash.Value + value
+			end
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF36">
+  <Properties>
+    <string name="Name">Wall</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>24</X><Y>10</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>0</X><Y>5</Y><Z>-48</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.7</R><G>0.1</G><B>0.1</B></Color3>
+    
+  </Properties>
+  
+</Item>
+<Item class="Part" referent="REF39">
+  <Properties>
+    <string name="Name">BuyWallButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>0</X><Y>2</Y><Z>-52</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.5</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF37">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF38">
+  <Properties>
+    <string name="Name">BuyWall</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 100
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	if stats and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plot.Wall.Transparency = 1
+		plot.Wall.CanCollide = false
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF42">
+  <Properties>
+    <string name="Name">BuyDropper2Button</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-8</X><Y>2</Y><Z>-52</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.2</R><G>0.7</G><B>0.7</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF40">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF41">
+  <Properties>
+    <string name="Name">BuyDropper2</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 400
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	if stats and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plot.Dropper2.Transparency = 0
+		plot.Dropper2.CanCollide = true
+		plot.Dropper2.DropCash.Disabled = false
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF45">
+  <Properties>
+    <string name="Name">BuySpeedButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-8</X><Y>2</Y><Z>-35</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.5</R><G>0.1</G><B>0.7</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF43">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF44">
+  <Properties>
+    <string name="Name">BuySpeed</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 600
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasSuperSpeed") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local character = plr.Character
+	if stats and character and stats.Cash.Value >= cost then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			stats.Cash.Value = stats.Cash.Value - cost
+			humanoid.WalkSpeed = 50
+			plr:SetAttribute("HasSuperSpeed", true)
+			button.Transparency = 1
+			button.CanCollide = false
+			clickDetector:Destroy()
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF48">
+  <Properties>
+    <string name="Name">BuyJumpButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>0</X><Y>2</Y><Z>-35</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.7</G><B>0.3</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF46">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF47">
+  <Properties>
+    <string name="Name">BuyJump</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 900
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasSuperJump") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local character = plr.Character
+	if stats and character and stats.Cash.Value >= cost then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			stats.Cash.Value = stats.Cash.Value - cost
+			humanoid.JumpPower = 100
+			plr:SetAttribute("HasSuperJump", true)
+			button.Transparency = 1
+			button.CanCollide = false
+			clickDetector:Destroy()
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF51">
+  <Properties>
+    <string name="Name">BuyFlightButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>8</X><Y>2</Y><Z>-35</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.1</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF49">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF50">
+  <Properties>
+    <string name="Name">BuyFlight</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 1500
+local root = plot.Parent.Parent
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasFlightCape") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local template = root:FindFirstChild("FlightCapeTemplate")
+	if stats and template and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plr:SetAttribute("HasFlightCape", true)
+		local clone = template:Clone()
+		clone.Parent = plr.Backpack
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF52">
+  <Properties>
+    <string name="Name">Sign</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">false</bool>
+    <Vector3 name="size"><X>1</X><Y>6</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>0</X><Y>5</Y><Z>-95</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.3</R><G>0.3</G><B>0.3</B></Color3>
+  </Properties>
+  <Item class="BillboardGui" referent="REF53">
+    <Properties>
+      <string name="Name">BillboardGui</string>
+      <bool name="AlwaysOnTop">true</bool>
+      <UDim2 name="Size"><XS>0</XS><XO>200</XO><YS>0</YS><YO>50</YO></UDim2>
+      <Vector3 name="StudsOffset"><X>0</X><Y>3</Y><Z>0</Z></Vector3>
+    </Properties>
+    <Item class="TextLabel" referent="REF54">
+      <Properties>
+        <string name="Name">TextLabel</string>
+        <UDim2 name="Size"><XS>1</XS><XO>0</XO><YS>1</YS><YO>0</YO></UDim2>
+        <float name="BackgroundTransparency">1</float>
+        <bool name="TextScaled">true</bool>
+        <Color3 name="TextColor3"><R>1</R><G>1</G><B>1</B></Color3>
+        <string name="Text">Empty Plot</string>
+      </Properties>
+    </Item>
+  </Item>
+</Item>
+<Item class="IntValue" referent="REF55">
+  <Properties>
+    <string name="Name">OwnerId</string>
+    <int name="Value">0</int>
+  </Properties>
+</Item>
+</Item>
+<Item class="Model" referent="REF84">
+  <Properties>
+    <string name="Name">Plot3</string>
+  </Properties>
+  <Item class="Part" referent="REF57">
+  <Properties>
+    <string name="Name">PlotSpawn</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.3</float>
+    <Vector3 name="size"><X>6</X><Y>1</Y><Z>6</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>60</X><Y>1</Y><Z>-90</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.1</G><B>0.6</B></Color3>
+    
+  </Properties>
+  
+</Item>
+<Item class="Part" referent="REF59">
+  <Properties>
+    <string name="Name">Dropper</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>4</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>52</X><Y>2.5</Y><Z>-70</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.4</G><B>0.9</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF58">
+  <Properties>
+    <string name="Name">DropCash</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local dropper = script.Parent
+local plot = dropper.Parent
+
+while true do
+	task.wait(2)
+	if plot.OwnerId.Value ~= 0 then
+		local cash = Instance.new("Part")
+		cash.Name = "Cash"
+		cash.Size = Vector3.new(1, 1, 1)
+		cash.Shape = Enum.PartType.Ball
+		cash.BrickColor = BrickColor.new("New Yeller")
+		cash.CanCollide = false
+		cash.Anchored = false
+		cash.CFrame = dropper.CFrame + Vector3.new(0, 4, 0)
+		cash:SetAttribute("PlotName", plot.Name)
+		cash:SetAttribute("Value", 5)
+		cash.Parent = workspace
+		game:GetService("Debris"):AddItem(cash, 10)
+	end
+end
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF61">
+  <Properties>
+    <string name="Name">Dropper2</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">false</bool>
+    <float name="Transparency">1</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>4</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>68</X><Y>2.5</Y><Z>-70</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.6</R><G>0.1</G><B>0.8</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF60">
+  <Properties>
+    <string name="Name">DropCash</string>
+    <bool name="Disabled">true</bool>
+    <ProtectedString name="Source"><![CDATA[
+local dropper = script.Parent
+local plot = dropper.Parent
+
+while true do
+	task.wait(1.5)
+	if plot.OwnerId.Value ~= 0 then
+		local cash = Instance.new("Part")
+		cash.Name = "Cash"
+		cash.Size = Vector3.new(1, 1, 1)
+		cash.Shape = Enum.PartType.Ball
+		cash.BrickColor = BrickColor.new("New Yeller")
+		cash.CanCollide = false
+		cash.Anchored = false
+		cash.CFrame = dropper.CFrame + Vector3.new(0, 4, 0)
+		cash:SetAttribute("PlotName", plot.Name)
+		cash:SetAttribute("Value", 20)
+		cash.Parent = workspace
+		game:GetService("Debris"):AddItem(cash, 10)
+	end
+end
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF63">
+  <Properties>
+    <string name="Name">Collector</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.5</float>
+    <Vector3 name="size"><X>12</X><Y>1</Y><Z>12</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>60</X><Y>0.5</Y><Z>-58</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.8</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF62">
+  <Properties>
+    <string name="Name">CollectCash</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local collector = script.Parent
+local plot = collector.Parent
+local debounce = {}
+
+collector.Touched:Connect(function(hit)
+	if hit.Name == "Cash" and hit:GetAttribute("PlotName") == plot.Name and not debounce[hit] then
+		debounce[hit] = true
+		local ownerId = plot.OwnerId.Value
+		local plr = game.Players:GetPlayerByUserId(ownerId)
+		local value = hit:GetAttribute("Value") or 5
+		hit:Destroy()
+		if plr then
+			local stats = plr:FindFirstChild("leaderstats")
+			if stats then
+				stats.Cash.Value = stats.Cash.Value + value
+			end
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF64">
+  <Properties>
+    <string name="Name">Wall</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>24</X><Y>10</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>60</X><Y>5</Y><Z>-48</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.7</R><G>0.1</G><B>0.1</B></Color3>
+    
+  </Properties>
+  
+</Item>
+<Item class="Part" referent="REF67">
+  <Properties>
+    <string name="Name">BuyWallButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>60</X><Y>2</Y><Z>-52</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.5</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF65">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF66">
+  <Properties>
+    <string name="Name">BuyWall</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 100
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	if stats and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plot.Wall.Transparency = 1
+		plot.Wall.CanCollide = false
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF70">
+  <Properties>
+    <string name="Name">BuyDropper2Button</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>52</X><Y>2</Y><Z>-52</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.2</R><G>0.7</G><B>0.7</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF68">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF69">
+  <Properties>
+    <string name="Name">BuyDropper2</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 400
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	if stats and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plot.Dropper2.Transparency = 0
+		plot.Dropper2.CanCollide = true
+		plot.Dropper2.DropCash.Disabled = false
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF73">
+  <Properties>
+    <string name="Name">BuySpeedButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>52</X><Y>2</Y><Z>-35</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.5</R><G>0.1</G><B>0.7</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF71">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF72">
+  <Properties>
+    <string name="Name">BuySpeed</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 600
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasSuperSpeed") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local character = plr.Character
+	if stats and character and stats.Cash.Value >= cost then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			stats.Cash.Value = stats.Cash.Value - cost
+			humanoid.WalkSpeed = 50
+			plr:SetAttribute("HasSuperSpeed", true)
+			button.Transparency = 1
+			button.CanCollide = false
+			clickDetector:Destroy()
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF76">
+  <Properties>
+    <string name="Name">BuyJumpButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>60</X><Y>2</Y><Z>-35</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.7</G><B>0.3</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF74">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF75">
+  <Properties>
+    <string name="Name">BuyJump</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 900
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasSuperJump") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local character = plr.Character
+	if stats and character and stats.Cash.Value >= cost then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			stats.Cash.Value = stats.Cash.Value - cost
+			humanoid.JumpPower = 100
+			plr:SetAttribute("HasSuperJump", true)
+			button.Transparency = 1
+			button.CanCollide = false
+			clickDetector:Destroy()
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF79">
+  <Properties>
+    <string name="Name">BuyFlightButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>68</X><Y>2</Y><Z>-35</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.1</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF77">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF78">
+  <Properties>
+    <string name="Name">BuyFlight</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 1500
+local root = plot.Parent.Parent
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasFlightCape") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local template = root:FindFirstChild("FlightCapeTemplate")
+	if stats and template and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plr:SetAttribute("HasFlightCape", true)
+		local clone = template:Clone()
+		clone.Parent = plr.Backpack
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF80">
+  <Properties>
+    <string name="Name">Sign</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">false</bool>
+    <Vector3 name="size"><X>1</X><Y>6</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>60</X><Y>5</Y><Z>-95</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.3</R><G>0.3</G><B>0.3</B></Color3>
+  </Properties>
+  <Item class="BillboardGui" referent="REF81">
+    <Properties>
+      <string name="Name">BillboardGui</string>
+      <bool name="AlwaysOnTop">true</bool>
+      <UDim2 name="Size"><XS>0</XS><XO>200</XO><YS>0</YS><YO>50</YO></UDim2>
+      <Vector3 name="StudsOffset"><X>0</X><Y>3</Y><Z>0</Z></Vector3>
+    </Properties>
+    <Item class="TextLabel" referent="REF82">
+      <Properties>
+        <string name="Name">TextLabel</string>
+        <UDim2 name="Size"><XS>1</XS><XO>0</XO><YS>1</YS><YO>0</YO></UDim2>
+        <float name="BackgroundTransparency">1</float>
+        <bool name="TextScaled">true</bool>
+        <Color3 name="TextColor3"><R>1</R><G>1</G><B>1</B></Color3>
+        <string name="Text">Empty Plot</string>
+      </Properties>
+    </Item>
+  </Item>
+</Item>
+<Item class="IntValue" referent="REF83">
+  <Properties>
+    <string name="Name">OwnerId</string>
+    <int name="Value">0</int>
+  </Properties>
+</Item>
+</Item>
+<Item class="Model" referent="REF112">
+  <Properties>
+    <string name="Name">Plot4</string>
+  </Properties>
+  <Item class="Part" referent="REF85">
+  <Properties>
+    <string name="Name">PlotSpawn</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.3</float>
+    <Vector3 name="size"><X>6</X><Y>1</Y><Z>6</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-60</X><Y>1</Y><Z>5</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.1</G><B>0.6</B></Color3>
+    
+  </Properties>
+  
+</Item>
+<Item class="Part" referent="REF87">
+  <Properties>
+    <string name="Name">Dropper</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>4</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-68</X><Y>2.5</Y><Z>25</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.4</G><B>0.9</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF86">
+  <Properties>
+    <string name="Name">DropCash</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local dropper = script.Parent
+local plot = dropper.Parent
+
+while true do
+	task.wait(2)
+	if plot.OwnerId.Value ~= 0 then
+		local cash = Instance.new("Part")
+		cash.Name = "Cash"
+		cash.Size = Vector3.new(1, 1, 1)
+		cash.Shape = Enum.PartType.Ball
+		cash.BrickColor = BrickColor.new("New Yeller")
+		cash.CanCollide = false
+		cash.Anchored = false
+		cash.CFrame = dropper.CFrame + Vector3.new(0, 4, 0)
+		cash:SetAttribute("PlotName", plot.Name)
+		cash:SetAttribute("Value", 5)
+		cash.Parent = workspace
+		game:GetService("Debris"):AddItem(cash, 10)
+	end
+end
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF89">
+  <Properties>
+    <string name="Name">Dropper2</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">false</bool>
+    <float name="Transparency">1</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>4</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-52</X><Y>2.5</Y><Z>25</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.6</R><G>0.1</G><B>0.8</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF88">
+  <Properties>
+    <string name="Name">DropCash</string>
+    <bool name="Disabled">true</bool>
+    <ProtectedString name="Source"><![CDATA[
+local dropper = script.Parent
+local plot = dropper.Parent
+
+while true do
+	task.wait(1.5)
+	if plot.OwnerId.Value ~= 0 then
+		local cash = Instance.new("Part")
+		cash.Name = "Cash"
+		cash.Size = Vector3.new(1, 1, 1)
+		cash.Shape = Enum.PartType.Ball
+		cash.BrickColor = BrickColor.new("New Yeller")
+		cash.CanCollide = false
+		cash.Anchored = false
+		cash.CFrame = dropper.CFrame + Vector3.new(0, 4, 0)
+		cash:SetAttribute("PlotName", plot.Name)
+		cash:SetAttribute("Value", 20)
+		cash.Parent = workspace
+		game:GetService("Debris"):AddItem(cash, 10)
+	end
+end
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF91">
+  <Properties>
+    <string name="Name">Collector</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.5</float>
+    <Vector3 name="size"><X>12</X><Y>1</Y><Z>12</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-60</X><Y>0.5</Y><Z>37</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.8</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF90">
+  <Properties>
+    <string name="Name">CollectCash</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local collector = script.Parent
+local plot = collector.Parent
+local debounce = {}
+
+collector.Touched:Connect(function(hit)
+	if hit.Name == "Cash" and hit:GetAttribute("PlotName") == plot.Name and not debounce[hit] then
+		debounce[hit] = true
+		local ownerId = plot.OwnerId.Value
+		local plr = game.Players:GetPlayerByUserId(ownerId)
+		local value = hit:GetAttribute("Value") or 5
+		hit:Destroy()
+		if plr then
+			local stats = plr:FindFirstChild("leaderstats")
+			if stats then
+				stats.Cash.Value = stats.Cash.Value + value
+			end
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF92">
+  <Properties>
+    <string name="Name">Wall</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>24</X><Y>10</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-60</X><Y>5</Y><Z>47</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.7</R><G>0.1</G><B>0.1</B></Color3>
+    
+  </Properties>
+  
+</Item>
+<Item class="Part" referent="REF95">
+  <Properties>
+    <string name="Name">BuyWallButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-60</X><Y>2</Y><Z>43</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.5</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF93">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF94">
+  <Properties>
+    <string name="Name">BuyWall</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 100
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	if stats and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plot.Wall.Transparency = 1
+		plot.Wall.CanCollide = false
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF98">
+  <Properties>
+    <string name="Name">BuyDropper2Button</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-68</X><Y>2</Y><Z>43</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.2</R><G>0.7</G><B>0.7</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF96">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF97">
+  <Properties>
+    <string name="Name">BuyDropper2</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 400
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	if stats and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plot.Dropper2.Transparency = 0
+		plot.Dropper2.CanCollide = true
+		plot.Dropper2.DropCash.Disabled = false
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF101">
+  <Properties>
+    <string name="Name">BuySpeedButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-68</X><Y>2</Y><Z>60</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.5</R><G>0.1</G><B>0.7</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF99">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF100">
+  <Properties>
+    <string name="Name">BuySpeed</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 600
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasSuperSpeed") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local character = plr.Character
+	if stats and character and stats.Cash.Value >= cost then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			stats.Cash.Value = stats.Cash.Value - cost
+			humanoid.WalkSpeed = 50
+			plr:SetAttribute("HasSuperSpeed", true)
+			button.Transparency = 1
+			button.CanCollide = false
+			clickDetector:Destroy()
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF104">
+  <Properties>
+    <string name="Name">BuyJumpButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-60</X><Y>2</Y><Z>60</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.7</G><B>0.3</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF102">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF103">
+  <Properties>
+    <string name="Name">BuyJump</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 900
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasSuperJump") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local character = plr.Character
+	if stats and character and stats.Cash.Value >= cost then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			stats.Cash.Value = stats.Cash.Value - cost
+			humanoid.JumpPower = 100
+			plr:SetAttribute("HasSuperJump", true)
+			button.Transparency = 1
+			button.CanCollide = false
+			clickDetector:Destroy()
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF107">
+  <Properties>
+    <string name="Name">BuyFlightButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-52</X><Y>2</Y><Z>60</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.1</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF105">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF106">
+  <Properties>
+    <string name="Name">BuyFlight</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 1500
+local root = plot.Parent.Parent
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasFlightCape") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local template = root:FindFirstChild("FlightCapeTemplate")
+	if stats and template and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plr:SetAttribute("HasFlightCape", true)
+		local clone = template:Clone()
+		clone.Parent = plr.Backpack
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF108">
+  <Properties>
+    <string name="Name">Sign</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">false</bool>
+    <Vector3 name="size"><X>1</X><Y>6</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-60</X><Y>5</Y><Z>0</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.3</R><G>0.3</G><B>0.3</B></Color3>
+  </Properties>
+  <Item class="BillboardGui" referent="REF109">
+    <Properties>
+      <string name="Name">BillboardGui</string>
+      <bool name="AlwaysOnTop">true</bool>
+      <UDim2 name="Size"><XS>0</XS><XO>200</XO><YS>0</YS><YO>50</YO></UDim2>
+      <Vector3 name="StudsOffset"><X>0</X><Y>3</Y><Z>0</Z></Vector3>
+    </Properties>
+    <Item class="TextLabel" referent="REF110">
+      <Properties>
+        <string name="Name">TextLabel</string>
+        <UDim2 name="Size"><XS>1</XS><XO>0</XO><YS>1</YS><YO>0</YO></UDim2>
+        <float name="BackgroundTransparency">1</float>
+        <bool name="TextScaled">true</bool>
+        <Color3 name="TextColor3"><R>1</R><G>1</G><B>1</B></Color3>
+        <string name="Text">Empty Plot</string>
+      </Properties>
+    </Item>
+  </Item>
+</Item>
+<Item class="IntValue" referent="REF111">
+  <Properties>
+    <string name="Name">OwnerId</string>
+    <int name="Value">0</int>
+  </Properties>
+</Item>
+</Item>
+<Item class="Model" referent="REF140">
+  <Properties>
+    <string name="Name">Plot5</string>
+  </Properties>
+  <Item class="Part" referent="REF113">
+  <Properties>
+    <string name="Name">PlotSpawn</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.3</float>
+    <Vector3 name="size"><X>6</X><Y>1</Y><Z>6</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>0</X><Y>1</Y><Z>5</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.1</G><B>0.6</B></Color3>
+    
+  </Properties>
+  
+</Item>
+<Item class="Part" referent="REF115">
+  <Properties>
+    <string name="Name">Dropper</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>4</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-8</X><Y>2.5</Y><Z>25</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.4</G><B>0.9</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF114">
+  <Properties>
+    <string name="Name">DropCash</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local dropper = script.Parent
+local plot = dropper.Parent
+
+while true do
+	task.wait(2)
+	if plot.OwnerId.Value ~= 0 then
+		local cash = Instance.new("Part")
+		cash.Name = "Cash"
+		cash.Size = Vector3.new(1, 1, 1)
+		cash.Shape = Enum.PartType.Ball
+		cash.BrickColor = BrickColor.new("New Yeller")
+		cash.CanCollide = false
+		cash.Anchored = false
+		cash.CFrame = dropper.CFrame + Vector3.new(0, 4, 0)
+		cash:SetAttribute("PlotName", plot.Name)
+		cash:SetAttribute("Value", 5)
+		cash.Parent = workspace
+		game:GetService("Debris"):AddItem(cash, 10)
+	end
+end
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF117">
+  <Properties>
+    <string name="Name">Dropper2</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">false</bool>
+    <float name="Transparency">1</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>4</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>8</X><Y>2.5</Y><Z>25</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.6</R><G>0.1</G><B>0.8</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF116">
+  <Properties>
+    <string name="Name">DropCash</string>
+    <bool name="Disabled">true</bool>
+    <ProtectedString name="Source"><![CDATA[
+local dropper = script.Parent
+local plot = dropper.Parent
+
+while true do
+	task.wait(1.5)
+	if plot.OwnerId.Value ~= 0 then
+		local cash = Instance.new("Part")
+		cash.Name = "Cash"
+		cash.Size = Vector3.new(1, 1, 1)
+		cash.Shape = Enum.PartType.Ball
+		cash.BrickColor = BrickColor.new("New Yeller")
+		cash.CanCollide = false
+		cash.Anchored = false
+		cash.CFrame = dropper.CFrame + Vector3.new(0, 4, 0)
+		cash:SetAttribute("PlotName", plot.Name)
+		cash:SetAttribute("Value", 20)
+		cash.Parent = workspace
+		game:GetService("Debris"):AddItem(cash, 10)
+	end
+end
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF119">
+  <Properties>
+    <string name="Name">Collector</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.5</float>
+    <Vector3 name="size"><X>12</X><Y>1</Y><Z>12</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>0</X><Y>0.5</Y><Z>37</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.8</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF118">
+  <Properties>
+    <string name="Name">CollectCash</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local collector = script.Parent
+local plot = collector.Parent
+local debounce = {}
+
+collector.Touched:Connect(function(hit)
+	if hit.Name == "Cash" and hit:GetAttribute("PlotName") == plot.Name and not debounce[hit] then
+		debounce[hit] = true
+		local ownerId = plot.OwnerId.Value
+		local plr = game.Players:GetPlayerByUserId(ownerId)
+		local value = hit:GetAttribute("Value") or 5
+		hit:Destroy()
+		if plr then
+			local stats = plr:FindFirstChild("leaderstats")
+			if stats then
+				stats.Cash.Value = stats.Cash.Value + value
+			end
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF120">
+  <Properties>
+    <string name="Name">Wall</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>24</X><Y>10</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>0</X><Y>5</Y><Z>47</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.7</R><G>0.1</G><B>0.1</B></Color3>
+    
+  </Properties>
+  
+</Item>
+<Item class="Part" referent="REF123">
+  <Properties>
+    <string name="Name">BuyWallButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>0</X><Y>2</Y><Z>43</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.5</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF121">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF122">
+  <Properties>
+    <string name="Name">BuyWall</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 100
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	if stats and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plot.Wall.Transparency = 1
+		plot.Wall.CanCollide = false
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF126">
+  <Properties>
+    <string name="Name">BuyDropper2Button</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-8</X><Y>2</Y><Z>43</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.2</R><G>0.7</G><B>0.7</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF124">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF125">
+  <Properties>
+    <string name="Name">BuyDropper2</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 400
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	if stats and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plot.Dropper2.Transparency = 0
+		plot.Dropper2.CanCollide = true
+		plot.Dropper2.DropCash.Disabled = false
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF129">
+  <Properties>
+    <string name="Name">BuySpeedButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>-8</X><Y>2</Y><Z>60</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.5</R><G>0.1</G><B>0.7</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF127">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF128">
+  <Properties>
+    <string name="Name">BuySpeed</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 600
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasSuperSpeed") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local character = plr.Character
+	if stats and character and stats.Cash.Value >= cost then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			stats.Cash.Value = stats.Cash.Value - cost
+			humanoid.WalkSpeed = 50
+			plr:SetAttribute("HasSuperSpeed", true)
+			button.Transparency = 1
+			button.CanCollide = false
+			clickDetector:Destroy()
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF132">
+  <Properties>
+    <string name="Name">BuyJumpButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>0</X><Y>2</Y><Z>60</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.7</G><B>0.3</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF130">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF131">
+  <Properties>
+    <string name="Name">BuyJump</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 900
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasSuperJump") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local character = plr.Character
+	if stats and character and stats.Cash.Value >= cost then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			stats.Cash.Value = stats.Cash.Value - cost
+			humanoid.JumpPower = 100
+			plr:SetAttribute("HasSuperJump", true)
+			button.Transparency = 1
+			button.CanCollide = false
+			clickDetector:Destroy()
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF135">
+  <Properties>
+    <string name="Name">BuyFlightButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>8</X><Y>2</Y><Z>60</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.1</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF133">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF134">
+  <Properties>
+    <string name="Name">BuyFlight</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 1500
+local root = plot.Parent.Parent
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasFlightCape") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local template = root:FindFirstChild("FlightCapeTemplate")
+	if stats and template and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plr:SetAttribute("HasFlightCape", true)
+		local clone = template:Clone()
+		clone.Parent = plr.Backpack
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF136">
+  <Properties>
+    <string name="Name">Sign</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">false</bool>
+    <Vector3 name="size"><X>1</X><Y>6</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>0</X><Y>5</Y><Z>0</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.3</R><G>0.3</G><B>0.3</B></Color3>
+  </Properties>
+  <Item class="BillboardGui" referent="REF137">
+    <Properties>
+      <string name="Name">BillboardGui</string>
+      <bool name="AlwaysOnTop">true</bool>
+      <UDim2 name="Size"><XS>0</XS><XO>200</XO><YS>0</YS><YO>50</YO></UDim2>
+      <Vector3 name="StudsOffset"><X>0</X><Y>3</Y><Z>0</Z></Vector3>
+    </Properties>
+    <Item class="TextLabel" referent="REF138">
+      <Properties>
+        <string name="Name">TextLabel</string>
+        <UDim2 name="Size"><XS>1</XS><XO>0</XO><YS>1</YS><YO>0</YO></UDim2>
+        <float name="BackgroundTransparency">1</float>
+        <bool name="TextScaled">true</bool>
+        <Color3 name="TextColor3"><R>1</R><G>1</G><B>1</B></Color3>
+        <string name="Text">Empty Plot</string>
+      </Properties>
+    </Item>
+  </Item>
+</Item>
+<Item class="IntValue" referent="REF139">
+  <Properties>
+    <string name="Name">OwnerId</string>
+    <int name="Value">0</int>
+  </Properties>
+</Item>
+</Item>
+<Item class="Model" referent="REF168">
+  <Properties>
+    <string name="Name">Plot6</string>
+  </Properties>
+  <Item class="Part" referent="REF141">
+  <Properties>
+    <string name="Name">PlotSpawn</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.3</float>
+    <Vector3 name="size"><X>6</X><Y>1</Y><Z>6</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>60</X><Y>1</Y><Z>5</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.1</G><B>0.6</B></Color3>
+    
+  </Properties>
+  
+</Item>
+<Item class="Part" referent="REF143">
+  <Properties>
+    <string name="Name">Dropper</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>4</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>52</X><Y>2.5</Y><Z>25</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.4</G><B>0.9</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF142">
+  <Properties>
+    <string name="Name">DropCash</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local dropper = script.Parent
+local plot = dropper.Parent
+
+while true do
+	task.wait(2)
+	if plot.OwnerId.Value ~= 0 then
+		local cash = Instance.new("Part")
+		cash.Name = "Cash"
+		cash.Size = Vector3.new(1, 1, 1)
+		cash.Shape = Enum.PartType.Ball
+		cash.BrickColor = BrickColor.new("New Yeller")
+		cash.CanCollide = false
+		cash.Anchored = false
+		cash.CFrame = dropper.CFrame + Vector3.new(0, 4, 0)
+		cash:SetAttribute("PlotName", plot.Name)
+		cash:SetAttribute("Value", 5)
+		cash.Parent = workspace
+		game:GetService("Debris"):AddItem(cash, 10)
+	end
+end
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF145">
+  <Properties>
+    <string name="Name">Dropper2</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">false</bool>
+    <float name="Transparency">1</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>4</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>68</X><Y>2.5</Y><Z>25</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.6</R><G>0.1</G><B>0.8</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF144">
+  <Properties>
+    <string name="Name">DropCash</string>
+    <bool name="Disabled">true</bool>
+    <ProtectedString name="Source"><![CDATA[
+local dropper = script.Parent
+local plot = dropper.Parent
+
+while true do
+	task.wait(1.5)
+	if plot.OwnerId.Value ~= 0 then
+		local cash = Instance.new("Part")
+		cash.Name = "Cash"
+		cash.Size = Vector3.new(1, 1, 1)
+		cash.Shape = Enum.PartType.Ball
+		cash.BrickColor = BrickColor.new("New Yeller")
+		cash.CanCollide = false
+		cash.Anchored = false
+		cash.CFrame = dropper.CFrame + Vector3.new(0, 4, 0)
+		cash:SetAttribute("PlotName", plot.Name)
+		cash:SetAttribute("Value", 20)
+		cash.Parent = workspace
+		game:GetService("Debris"):AddItem(cash, 10)
+	end
+end
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF147">
+  <Properties>
+    <string name="Name">Collector</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.5</float>
+    <Vector3 name="size"><X>12</X><Y>1</Y><Z>12</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>60</X><Y>0.5</Y><Z>37</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.8</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="Script" referent="REF146">
+  <Properties>
+    <string name="Name">CollectCash</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local collector = script.Parent
+local plot = collector.Parent
+local debounce = {}
+
+collector.Touched:Connect(function(hit)
+	if hit.Name == "Cash" and hit:GetAttribute("PlotName") == plot.Name and not debounce[hit] then
+		debounce[hit] = true
+		local ownerId = plot.OwnerId.Value
+		local plr = game.Players:GetPlayerByUserId(ownerId)
+		local value = hit:GetAttribute("Value") or 5
+		hit:Destroy()
+		if plr then
+			local stats = plr:FindFirstChild("leaderstats")
+			if stats then
+				stats.Cash.Value = stats.Cash.Value + value
+			end
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF148">
+  <Properties>
+    <string name="Name">Wall</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>24</X><Y>10</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>60</X><Y>5</Y><Z>47</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.7</R><G>0.1</G><B>0.1</B></Color3>
+    
+  </Properties>
+  
+</Item>
+<Item class="Part" referent="REF151">
+  <Properties>
+    <string name="Name">BuyWallButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>60</X><Y>2</Y><Z>43</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.5</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF149">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF150">
+  <Properties>
+    <string name="Name">BuyWall</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 100
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	if stats and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plot.Wall.Transparency = 1
+		plot.Wall.CanCollide = false
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF154">
+  <Properties>
+    <string name="Name">BuyDropper2Button</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>52</X><Y>2</Y><Z>43</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.2</R><G>0.7</G><B>0.7</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF152">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF153">
+  <Properties>
+    <string name="Name">BuyDropper2</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 400
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	if stats and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plot.Dropper2.Transparency = 0
+		plot.Dropper2.CanCollide = true
+		plot.Dropper2.DropCash.Disabled = false
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF157">
+  <Properties>
+    <string name="Name">BuySpeedButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>52</X><Y>2</Y><Z>60</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.5</R><G>0.1</G><B>0.7</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF155">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF156">
+  <Properties>
+    <string name="Name">BuySpeed</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 600
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasSuperSpeed") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local character = plr.Character
+	if stats and character and stats.Cash.Value >= cost then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			stats.Cash.Value = stats.Cash.Value - cost
+			humanoid.WalkSpeed = 50
+			plr:SetAttribute("HasSuperSpeed", true)
+			button.Transparency = 1
+			button.CanCollide = false
+			clickDetector:Destroy()
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF160">
+  <Properties>
+    <string name="Name">BuyJumpButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>60</X><Y>2</Y><Z>60</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.1</R><G>0.7</G><B>0.3</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF158">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF159">
+  <Properties>
+    <string name="Name">BuyJump</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 900
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasSuperJump") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local character = plr.Character
+	if stats and character and stats.Cash.Value >= cost then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			stats.Cash.Value = stats.Cash.Value - cost
+			humanoid.JumpPower = 100
+			plr:SetAttribute("HasSuperJump", true)
+			button.Transparency = 1
+			button.CanCollide = false
+			clickDetector:Destroy()
+		end
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF163">
+  <Properties>
+    <string name="Name">BuyFlightButton</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">true</bool>
+    <float name="Transparency">0.0</float>
+    <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>68</X><Y>2</Y><Z>60</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.9</R><G>0.1</G><B>0.1</B></Color3>
+    
+  </Properties>
+  <Item class="ClickDetector" referent="REF161">
+  <Properties>
+    <string name="Name">ClickDetector</string>
+    <float name="MaxActivationDistance">15</float>
+  </Properties>
+</Item><Item class="Script" referent="REF162">
+  <Properties>
+    <string name="Name">BuyFlight</string>
+    <bool name="Disabled">false</bool>
+    <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local plot = button.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 1500
+local root = plot.Parent.Parent
+
+clickDetector.MouseClick:Connect(function(plr)
+	if plot.OwnerId.Value ~= plr.UserId then return end
+	if plr:GetAttribute("HasFlightCape") then return end
+	local stats = plr:FindFirstChild("leaderstats")
+	local template = root:FindFirstChild("FlightCapeTemplate")
+	if stats and template and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		plr:SetAttribute("HasFlightCape", true)
+		local clone = template:Clone()
+		clone.Parent = plr.Backpack
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+
+]]></ProtectedString>
+  </Properties>
+</Item>
+</Item>
+<Item class="Part" referent="REF164">
+  <Properties>
+    <string name="Name">Sign</string>
+    <bool name="Anchored">true</bool>
+    <bool name="CanCollide">false</bool>
+    <Vector3 name="size"><X>1</X><Y>6</Y><Z>1</Z></Vector3>
+    <CoordinateFrame name="CFrame">
+      <X>60</X><Y>5</Y><Z>0</Z>
+      <R00>1</R00><R01>0</R01><R02>0</R02>
+      <R10>0</R10><R11>1</R11><R12>0</R12>
+      <R20>0</R20><R21>0</R21><R22>1</R22>
+    </CoordinateFrame>
+    <Color3 name="Color"><R>0.3</R><G>0.3</G><B>0.3</B></Color3>
+  </Properties>
+  <Item class="BillboardGui" referent="REF165">
+    <Properties>
+      <string name="Name">BillboardGui</string>
+      <bool name="AlwaysOnTop">true</bool>
+      <UDim2 name="Size"><XS>0</XS><XO>200</XO><YS>0</YS><YO>50</YO></UDim2>
+      <Vector3 name="StudsOffset"><X>0</X><Y>3</Y><Z>0</Z></Vector3>
+    </Properties>
+    <Item class="TextLabel" referent="REF166">
+      <Properties>
+        <string name="Name">TextLabel</string>
+        <UDim2 name="Size"><XS>1</XS><XO>0</XO><YS>1</YS><YO>0</YO></UDim2>
+        <float name="BackgroundTransparency">1</float>
+        <bool name="TextScaled">true</bool>
+        <Color3 name="TextColor3"><R>1</R><G>1</G><B>1</B></Color3>
+        <string name="Text">Empty Plot</string>
+      </Properties>
+    </Item>
+  </Item>
+</Item>
+<Item class="IntValue" referent="REF167">
+  <Properties>
+    <string name="Name">OwnerId</string>
+    <int name="Value">0</int>
+  </Properties>
+</Item>
+</Item>
+</Item>
+  </Item>
+</roblox>
