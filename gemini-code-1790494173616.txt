@@ -1,0 +1,391 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+  <Meta name="ExplicitAutoJoints">true</Meta>
+  <External>null</External>
+  <External>nil</External>
+  <Item class="Model" referent="RBX_TYCOON">
+    <Properties>
+      <string name="Name">AdvancedTycoonKit</string>
+    </Properties>
+    
+    <Item class="Script" referent="RBX_CORE">
+      <Properties>
+        <string name="Name">TycoonCore</string>
+        <ProtectedString name="Source"><![CDATA[-- [ Advanced Tycoon Core Engine V2 ] --
+-- Uses modern Luau, Attributes, Coroutines, and Debris for optimized performance.
+
+local Tycoon = script.Parent
+
+local Essentials = Tycoon:WaitForChild("Essentials")
+local Buttons = Tycoon:WaitForChild("Buttons")
+local Purchasables = Tycoon:WaitForChild("Purchasables")
+local Unlocked = Tycoon:WaitForChild("Unlocked")
+
+local Owner = nil
+
+-- ==========================================
+-- 1. AUTO-BUILD TYCOON LAYOUT (If Empty)
+-- ==========================================
+if #Essentials:GetChildren() == 0 then
+	print("[TycoonCore]: Building expanded starter layout...")
+	
+	local base = Instance.new("Part")
+	base.Name = "BaseFloor"
+	base.Size = Vector3.new(40, 1, 40)
+	base.Position = Vector3.new(0, 0.5, 0)
+	base.Anchored = true
+	base.BrickColor = BrickColor.new("Dark stone grey")
+	base.Parent = Essentials
+
+	local claimPad = Instance.new("Part")
+	claimPad.Name = "ClaimPad"
+	claimPad.Size = Vector3.new(6, 0.2, 6)
+	claimPad.Position = Vector3.new(0, 1.1, 15)
+	claimPad.Anchored = true
+	claimPad.BrickColor = BrickColor.new("Lime green")
+	claimPad.Parent = Essentials
+
+	local collector = Instance.new("Part")
+	collector.Name = "Collector"
+	collector.Size = Vector3.new(4, 2, 4)
+	collector.Position = Vector3.new(0, 2, -10)
+	collector.Anchored = true
+	collector.BrickColor = BrickColor.new("Bright blue")
+	collector.CanCollide = false
+	collector.Parent = Essentials
+
+	-- ==========================================
+	-- PURCHASABLE 1: Dropper 1
+	-- ==========================================
+	local startButton = Instance.new("Part")
+	startButton.Name = "Buy_Dropper1"
+	startButton.Size = Vector3.new(2, 0.5, 2)
+	startButton.Position = Vector3.new(5, 1.25, 5)
+	startButton.Anchored = true
+	startButton.BrickColor = BrickColor.new("Bright red")
+	startButton:SetAttribute("Cost", 0)
+	startButton:SetAttribute("Target", "Dropper1")
+	startButton.Parent = Buttons
+
+	local dropper1 = Instance.new("Model")
+	dropper1.Name = "Dropper1"
+	dropper1:SetAttribute("IsDropper", true)
+	dropper1:SetAttribute("DropValue", 5)
+	dropper1:SetAttribute("DropRate", 1.5)
+	
+	local dMain = Instance.new("Part")
+	dMain.Name = "Main"
+	dMain.Size = Vector3.new(2, 2, 2)
+	dMain.Position = Vector3.new(0, 5, -5)
+	dMain.Anchored = true
+	dMain.Parent = dropper1
+
+	local dPoint = Instance.new("Part")
+	dPoint.Name = "DropPoint"
+	dPoint.Size = Vector3.new(0.5, 0.5, 0.5)
+	dPoint.Position = Vector3.new(0, 3.5, -5)
+	dPoint.Anchored = true
+	dPoint.Transparency = 1
+	dPoint.Parent = dropper1
+
+	dropper1.PrimaryPart = dMain
+	dropper1.Parent = Purchasables
+
+	-- ==========================================
+	-- PURCHASABLE 2: Dropper 2
+	-- ==========================================
+	local btnDropper2 = Instance.new("Part")
+	btnDropper2.Name = "Buy_Dropper2"
+	btnDropper2.Size = Vector3.new(2, 0.5, 2)
+	btnDropper2.Position = Vector3.new(8, 1.25, 5)
+	btnDropper2.Anchored = true
+	btnDropper2.BrickColor = BrickColor.new("Bright red")
+	btnDropper2:SetAttribute("Cost", 50)
+	btnDropper2:SetAttribute("Target", "Dropper2")
+	btnDropper2.Parent = Buttons
+
+	local dropper2 = Instance.new("Model")
+	dropper2.Name = "Dropper2"
+	dropper2:SetAttribute("IsDropper", true)
+	dropper2:SetAttribute("DropValue", 15)
+	dropper2:SetAttribute("DropRate", 1.2)
+	
+	local dMain2 = Instance.new("Part")
+	dMain2.Name = "Main"
+	dMain2.Size = Vector3.new(2, 3, 2)
+	dMain2.Position = Vector3.new(-3, 5.5, -5)
+	dMain2.Anchored = true
+	dMain2.Material = Enum.Material.DiamondPlate
+	dMain2.BrickColor = BrickColor.new("Dark stone grey")
+	dMain2.Parent = dropper2
+
+	local dPoint2 = Instance.new("Part")
+	dPoint2.Name = "DropPoint"
+	dPoint2.Size = Vector3.new(0.5, 0.5, 0.5)
+	dPoint2.Position = Vector3.new(-3, 3.5, -5)
+	dPoint2.Anchored = true
+	dPoint2.Transparency = 1
+	dPoint2.Parent = dropper2
+	dropper2.PrimaryPart = dMain2
+	dropper2.Parent = Purchasables
+
+	-- ==========================================
+	-- PURCHASABLE 3: Base Walls
+	-- ==========================================
+	local btnWalls = Instance.new("Part")
+	btnWalls.Name = "Buy_Walls"
+	btnWalls.Size = Vector3.new(2, 0.5, 2)
+	btnWalls.Position = Vector3.new(5, 1.25, 8)
+	btnWalls.Anchored = true
+	btnWalls.BrickColor = BrickColor.new("Bright red")
+	btnWalls:SetAttribute("Cost", 150)
+	btnWalls:SetAttribute("Target", "BaseWalls")
+	btnWalls.Parent = Buttons
+
+	local walls = Instance.new("Model")
+	walls.Name = "BaseWalls"
+	
+	local wallColors = BrickColor.new("Ghost grey")
+	
+	local w1 = Instance.new("Part") 
+	w1.Size = Vector3.new(1, 12, 40) 
+	w1.Position = Vector3.new(-19.5, 6.5, 0) 
+	w1.Anchored = true 
+	w1.BrickColor = wallColors 
+	w1.Transparency = 0.5 
+	w1.Material = Enum.Material.Glass 
+	w1.Parent = walls
+	
+	local w2 = Instance.new("Part") 
+	w2.Size = Vector3.new(1, 12, 40) 
+	w2.Position = Vector3.new(19.5, 6.5, 0) 
+	w2.Anchored = true 
+	w2.BrickColor = wallColors 
+	w2.Transparency = 0.5 
+	w2.Material = Enum.Material.Glass 
+	w2.Parent = walls
+	
+	local w3 = Instance.new("Part") 
+	w3.Size = Vector3.new(40, 12, 1) 
+	w3.Position = Vector3.new(0, 6.5, -19.5) 
+	w3.Anchored = true 
+	w3.BrickColor = wallColors 
+	w3.Transparency = 0.5 
+	w3.Material = Enum.Material.Glass 
+	w3.Parent = walls
+	
+	walls.Parent = Purchasables
+
+	-- ==========================================
+	-- PURCHASABLE 4: Neon Hyperbiker
+	-- ==========================================
+	local btnBike = Instance.new("Part")
+	btnBike.Name = "Buy_Hyperbike"
+	btnBike.Size = Vector3.new(2, 0.5, 2)
+	btnBike.Position = Vector3.new(8, 1.25, 8)
+	btnBike.Anchored = true
+	btnBike.BrickColor = BrickColor.new("Bright red")
+	btnBike:SetAttribute("Cost", 500)
+	btnBike:SetAttribute("Target", "NeonHyperbike")
+	btnBike.Parent = Buttons
+
+	local bike = Instance.new("Model")
+	bike.Name = "NeonHyperbike"
+	
+	local body = Instance.new("Part")
+	body.Size = Vector3.new(1.5, 1.5, 5)
+	body.Position = Vector3.new(12, 3, -12)
+	body.Anchored = true
+	body.Material = Enum.Material.Neon
+	body.BrickColor = BrickColor.new("Cyan")
+	body.Parent = bike
+
+	local seat = Instance.new("Seat")
+	seat.Size = Vector3.new(1.5, 0.5, 1.5)
+	seat.Position = Vector3.new(12, 4, -12)
+	seat.Anchored = true
+	seat.BrickColor = BrickColor.new("Really black")
+	seat.Parent = bike
+
+	local wFront = Instance.new("Part")
+	wFront.Shape = Enum.PartType.Cylinder
+	wFront.Size = Vector3.new(0.5, 3, 3)
+	wFront.Position = Vector3.new(12, 2.5, -15)
+	wFront.Anchored = true
+	wFront.Material = Enum.Material.Neon
+	wFront.BrickColor = BrickColor.new("Magenta")
+	wFront.Parent = bike
+
+	local wBack = wFront:Clone()
+	wBack.Position = Vector3.new(12, 2.5, -9)
+	wBack.Parent = bike
+	
+	local glow = Instance.new("PointLight", body)
+	glow.Color = Color3.new(0, 1, 1)
+	glow.Range = 20
+	glow.Brightness = 3
+
+	bike.Parent = Purchasables
+end
+
+local ClaimPad = Essentials:WaitForChild("ClaimPad")
+local Collector = Essentials:WaitForChild("Collector")
+
+-- ==========================================
+-- 2. LEADERSTATS SETUP
+-- ==========================================
+game.Players.PlayerAdded:Connect(function(player)
+	if not player:FindFirstChild("leaderstats") then
+		local ls = Instance.new("Folder")
+		ls.Name = "leaderstats"
+		ls.Parent = player
+
+		local cash = Instance.new("NumberValue")
+		cash.Name = "Cash"
+		cash.Value = 0
+		cash.Parent = ls
+	end
+end)
+
+-- ==========================================
+-- 3. CORE LOGIC
+-- ==========================================
+
+-- Claim Logic
+ClaimPad.Touched:Connect(function(hit)
+	if Owner then return end
+	local player = game.Players:GetPlayerFromCharacter(hit.Parent)
+	
+	if player then
+		Owner = player
+		ClaimPad.BrickColor = BrickColor.new("Bright red")
+		
+		local gui = Instance.new("BillboardGui", ClaimPad)
+		gui.Size = UDim2.new(0, 200, 0, 50)
+		gui.StudsOffset = Vector3.new(0, 3, 0)
+		local txt = Instance.new("TextLabel", gui)
+		txt.Size = UDim2.new(1, 0, 1, 0)
+		txt.BackgroundTransparency = 1
+		txt.TextScaled = true
+		txt.Font = Enum.Font.FredokaOne
+		txt.TextColor3 = Color3.new(1, 1, 1)
+		txt.Text = player.Name .. "'s Tycoon"
+	end
+end)
+
+-- Collector Logic
+Collector.Touched:Connect(function(hit)
+	local val = hit:GetAttribute("CashValue")
+	if val then
+		hit:Destroy()
+		if Owner then
+			local ls = Owner:FindFirstChild("leaderstats")
+			if ls and ls:FindFirstChild("Cash") then
+				ls.Cash.Value += val
+			end
+		end
+	end
+end)
+
+-- Dropper System
+local function StartDropper(model)
+	local dropPoint = model:FindFirstChild("DropPoint")
+	local dropValue = model:GetAttribute("DropValue") or 5
+	local dropRate = model:GetAttribute("DropRate") or 2
+
+	if not dropPoint then return end
+	
+	coroutine.wrap(function()
+		while model.Parent == Unlocked do
+			local ore = Instance.new("Part")
+			ore.Size = Vector3.new(1, 1, 1)
+			ore.Position = dropPoint.Position
+			ore.BrickColor = BrickColor.new("Bright yellow")
+			ore.Material = Enum.Material.Neon
+			ore:SetAttribute("CashValue", dropValue)
+			ore.Parent = workspace
+			
+			-- Clean up ores after 15s to prevent lag
+			game.Debris:AddItem(ore, 15)
+			task.wait(dropRate)
+		end
+	end)()
+end
+
+-- Button Purchase System
+local function SetupButton(btn)
+	local cost = btn:GetAttribute("Cost") or 10
+	local targetName = btn:GetAttribute("Target")
+	local db = false
+
+	-- Auto-generate Floating UI for cost
+	local bGui = Instance.new("BillboardGui", btn)
+	bGui.Size = UDim2.new(0, 100, 0, 50)
+	bGui.StudsOffset = Vector3.new(0, 2, 0)
+	local bTxt = Instance.new("TextLabel", bGui)
+	bTxt.Size = UDim2.new(1,0,1,0)
+	bTxt.BackgroundTransparency = 1
+	bTxt.TextScaled = true
+	bTxt.Font = Enum.Font.GothamBold
+	bTxt.TextColor3 = Color3.new(0.3, 1, 0.3)
+	bTxt.Text = "$" .. tostring(cost)
+	
+	-- Special coloring for free buttons
+	if cost == 0 then
+		bTxt.Text = "FREE"
+		btn.BrickColor = BrickColor.new("Lime green")
+	end
+
+	btn.Touched:Connect(function(hit)
+		if db or not Owner then return end
+		local player = game.Players:GetPlayerFromCharacter(hit.Parent)
+		
+		if player == Owner then
+			db = true
+			local ls = player:FindFirstChild("leaderstats")
+			
+			if ls and ls.Cash.Value >= cost then
+				local targetItem = Purchasables:FindFirstChild(targetName)
+				if targetItem then
+					ls.Cash.Value -= cost
+					targetItem.Parent = Unlocked
+					
+					-- If it's a dropper, activate its drop loop
+					if targetItem:GetAttribute("IsDropper") then
+						StartDropper(targetItem)
+					end
+					
+					btn:Destroy()
+				end
+			end
+			task.wait(0.5)
+			db = false
+		end
+	end)
+end
+
+-- Initialize Buttons
+for _, btn in pairs(Buttons:GetChildren()) do
+	if btn:IsA("BasePart") then SetupButton(btn) end
+end
+]]></ProtectedString>
+      </Properties>
+    </Item>
+
+    <Item class="Folder" referent="RBX_ESS">
+      <Properties><string name="Name">Essentials</string></Properties>
+    </Item>
+    <Item class="Folder" referent="RBX_BUT">
+      <Properties><string name="Name">Buttons</string></Properties>
+    </Item>
+    <Item class="Folder" referent="RBX_PUR">
+      <Properties><string name="Name">Purchasables</string></Properties>
+    </Item>
+    <Item class="Folder" referent="RBX_UNL">
+      <Properties><string name="Name">Unlocked</string></Properties>
+    </Item>
+    
+  </Item>
+</roblox>
+```eof
+
+Just save this exactly as `AdvancedTycoonExpanded.rbxmx`, import it into Roblox Studio (`Insert from File`), and click Play. The script handles building the droppers, the transparent walls, and the rideable neon hyperbike!
