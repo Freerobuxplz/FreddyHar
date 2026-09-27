@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="utf-8"?>
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="4">
+  <Item class="Model" referent="MODEL_ROOT">
+    <Properties>
+      <string name="Name">SuperheroTycoon</string>
+    </Properties>
+
+    <Item class="Part" referent="PART_BASEPLATE">
+      <Properties>
+        <string name="Name">Baseplate</string>
+        <bool name="Anchored">true</bool>
+        <bool name="CanCollide">true</bool>
+        <Vector3 name="size"><X>100</X><Y>1</Y><Z>100</Z></Vector3>
+        <CoordinateFrame name="CFrame">
+          <X>0</X><Y>0</Y><Z>0</Z>
+          <R00>1</R00><R01>0</R01><R02>0</R02>
+          <R10>0</R10><R11>1</R11><R12>0</R12>
+          <R20>0</R20><R21>0</R21><R22>1</R22>
+        </CoordinateFrame>
+        <Color3 name="Color"><R>0.2</R><G>0.6</G><B>0.2</B></Color3>
+      </Properties>
+    </Item>
+
+    <Item class="SpawnLocation" referent="PART_SPAWN">
+      <Properties>
+        <string name="Name">SpawnLocation</string>
+        <bool name="Anchored">true</bool>
+        <bool name="CanCollide">true</bool>
+        <Vector3 name="size"><X>6</X><Y>1</Y><Z>6</Z></Vector3>
+        <CoordinateFrame name="CFrame">
+          <X>0</X><Y>1</Y><Z>-30</Z>
+          <R00>1</R00><R01>0</R01><R02>0</R02>
+          <R10>0</R10><R11>1</R11><R12>0</R12>
+          <R20>0</R20><R21>0</R21><R22>1</R22>
+        </CoordinateFrame>
+        <Color3 name="Color"><R>0.1</R><G>0.1</G><B>0.6</B></Color3>
+      </Properties>
+    </Item>
+
+    <Item class="Script" referent="SCRIPT_LEADERSTATS">
+      <Properties>
+        <string name="Name">LeaderstatsScript</string>
+        <ProtectedString name="Source"><![CDATA[
+game.Players.PlayerAdded:Connect(function(plr)
+	local stats = Instance.new("Folder")
+	stats.Name = "leaderstats"
+	stats.Parent = plr
+
+	local cash = Instance.new("IntValue")
+	cash.Name = "Cash"
+	cash.Value = 0
+	cash.Parent = stats
+end)
+]]></ProtectedString>
+      </Properties>
+    </Item>
+
+    <Item class="Part" referent="PART_DROPPER">
+      <Properties>
+        <string name="Name">Dropper</string>
+        <bool name="Anchored">true</bool>
+        <bool name="CanCollide">true</bool>
+        <Vector3 name="size"><X>4</X><Y>4</Y><Z>4</Z></Vector3>
+        <CoordinateFrame name="CFrame">
+          <X>-20</X><Y>2.5</Y><Z>0</Z>
+          <R00>1</R00><R01>0</R01><R02>0</R02>
+          <R10>0</R10><R11>1</R11><R12>0</R12>
+          <R20>0</R20><R21>0</R21><R22>1</R22>
+        </CoordinateFrame>
+        <Color3 name="Color"><R>0.1</R><G>0.4</G><B>0.9</B></Color3>
+      </Properties>
+      <Item class="Script" referent="SCRIPT_DROPPER">
+        <Properties>
+          <string name="Name">DropCash</string>
+          <ProtectedString name="Source"><![CDATA[
+local dropper = script.Parent
+
+while true do
+	task.wait(2)
+	local cash = Instance.new("Part")
+	cash.Name = "Cash"
+	cash.Size = Vector3.new(1, 1, 1)
+	cash.Shape = Enum.PartType.Ball
+	cash.BrickColor = BrickColor.new("New Yeller")
+	cash.CFrame = dropper.CFrame + Vector3.new(0, 4, 0)
+	cash.Parent = workspace
+end
+]]></ProtectedString>
+        </Properties>
+      </Item>
+    </Item>
+
+    <Item class="Part" referent="PART_COLLECTOR">
+      <Properties>
+        <string name="Name">Collector</string>
+        <bool name="Anchored">true</bool>
+        <bool name="CanCollide">true</bool>
+        <float name="Transparency">0.5</float>
+        <Vector3 name="size"><X>8</X><Y>1</Y><Z>8</Z></Vector3>
+        <CoordinateFrame name="CFrame">
+          <X>-20</X><Y>0.5</Y><Z>15</Z>
+          <R00>1</R00><R01>0</R01><R02>0</R02>
+          <R10>0</R10><R11>1</R11><R12>0</R12>
+          <R20>0</R20><R21>0</R21><R22>1</R22>
+        </CoordinateFrame>
+        <Color3 name="Color"><R>0.9</R><G>0.8</G><B>0.1</B></Color3>
+      </Properties>
+      <Item class="Script" referent="SCRIPT_COLLECTOR">
+        <Properties>
+          <string name="Name">CollectCash</string>
+          <ProtectedString name="Source"><![CDATA[
+local collector = script.Parent
+
+collector.Touched:Connect(function(hit)
+	if hit.Name == "Cash" and hit.Parent == workspace then
+		hit:Destroy()
+		for _, plr in ipairs(game.Players:GetPlayers()) do
+			local stats = plr:FindFirstChild("leaderstats")
+			if stats then
+				stats.Cash.Value = stats.Cash.Value + 5
+			end
+		end
+	end
+end)
+]]></ProtectedString>
+        </Properties>
+      </Item>
+    </Item>
+
+    <Item class="Part" referent="PART_WALL">
+      <Properties>
+        <string name="Name">Wall</string>
+        <bool name="Anchored">true</bool>
+        <bool name="CanCollide">true</bool>
+        <Vector3 name="size"><X>20</X><Y>10</Y><Z>1</Z></Vector3>
+        <CoordinateFrame name="CFrame">
+          <X>0</X><Y>5</Y><Z>20</Z>
+          <R00>1</R00><R01>0</R01><R02>0</R02>
+          <R10>0</R10><R11>1</R11><R12>0</R12>
+          <R20>0</R20><R21>0</R21><R22>1</R22>
+        </CoordinateFrame>
+        <Color3 name="Color"><R>0.7</R><G>0.1</G><B>0.1</B></Color3>
+      </Properties>
+    </Item>
+
+    <Item class="Part" referent="PART_BUY_BUTTON">
+      <Properties>
+        <string name="Name">PurchaseButton_UnlockPath</string>
+        <bool name="Anchored">true</bool>
+        <bool name="CanCollide">true</bool>
+        <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+        <CoordinateFrame name="CFrame">
+          <X>0</X><Y>2</Y><Z>15</Z>
+          <R00>1</R00><R01>0</R01><R02>0</R02>
+          <R10>0</R10><R11>1</R11><R12>0</R12>
+          <R20>0</R20><R21>0</R21><R22>1</R22>
+        </CoordinateFrame>
+        <Color3 name="Color"><R>0.9</R><G>0.5</G><B>0.1</B></Color3>
+      </Properties>
+      <Item class="ClickDetector" referent="CLICK_BUY_BUTTON">
+        <Properties>
+          <string name="Name">ClickDetector</string>
+          <float name="MaxActivationDistance">15</float>
+        </Properties>
+      </Item>
+      <Item class="Script" referent="SCRIPT_BUY_BUTTON">
+        <Properties>
+          <string name="Name">BuyWallRemoval</string>
+          <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 100
+local wall = workspace.SuperheroTycoon.Wall
+
+clickDetector.MouseClick:Connect(function(plr)
+	local stats = plr:FindFirstChild("leaderstats")
+	if stats and stats.Cash.Value >= cost then
+		stats.Cash.Value = stats.Cash.Value - cost
+		wall.Transparency = 1
+		wall.CanCollide = false
+		button.Transparency = 1
+		button.CanCollide = false
+		clickDetector:Destroy()
+	end
+end)
+]]></ProtectedString>
+        </Properties>
+      </Item>
+    </Item>
+
+    <Item class="Part" referent="PART_POWER_BUTTON">
+      <Properties>
+        <string name="Name">PowerButton_SuperSpeed</string>
+        <bool name="Anchored">true</bool>
+        <bool name="CanCollide">true</bool>
+        <Vector3 name="size"><X>4</X><Y>4</Y><Z>1</Z></Vector3>
+        <CoordinateFrame name="CFrame">
+          <X>20</X><Y>2</Y><Z>15</Z>
+          <R00>1</R00><R01>0</R01><R02>0</R02>
+          <R10>0</R10><R11>1</R11><R12>0</R12>
+          <R20>0</R20><R21>0</R21><R22>1</R22>
+        </CoordinateFrame>
+        <Color3 name="Color"><R>0.5</R><G>0.1</G><B>0.7</B></Color3>
+      </Properties>
+      <Item class="ClickDetector" referent="CLICK_POWER_BUTTON">
+        <Properties>
+          <string name="Name">ClickDetector</string>
+          <float name="MaxActivationDistance">15</float>
+        </Properties>
+      </Item>
+      <Item class="Script" referent="SCRIPT_POWER_BUTTON">
+        <Properties>
+          <string name="Name">BuySuperSpeed</string>
+          <ProtectedString name="Source"><![CDATA[
+local button = script.Parent
+local clickDetector = button:WaitForChild("ClickDetector")
+local cost = 250
+
+clickDetector.MouseClick:Connect(function(plr)
+	local stats = plr:FindFirstChild("leaderstats")
+	local character = plr.Character
+	if stats and character and stats.Cash.Value >= cost then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid and not character:GetAttribute("HasSuperSpeed") then
+			stats.Cash.Value = stats.Cash.Value - cost
+			humanoid.WalkSpeed = 50
+			humanoid.JumpPower = 100
+			character:SetAttribute("HasSuperSpeed", true)
+		end
+	end
+end)
+]]></ProtectedString>
+        </Properties>
+      </Item>
+    </Item>
+
+  </Item>
+</roblox>
