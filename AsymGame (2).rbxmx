@@ -1,0 +1,1664 @@
+<?xml version="1.0" encoding="utf-8"?>
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+
+	<!-- ==================================================================== -->
+	<!-- 1) ReplicatedStorage/CharacterData  (ModuleScript)                    -->
+	<!-- ==================================================================== -->
+	<Item class="ModuleScript" referent="ITEM_CharacterData">
+		<Properties>
+			<string name="Name">CharacterData</string>
+			<ProtectedString name="Source"><![CDATA[
+local CharacterData = {}
+
+CharacterData.Survivors = {
+	Sonic = {
+		AssetId = 348401846,
+		Abilities = {"PeelOut", "DropDash"},
+	},
+	Amy = {
+		AssetId = 2869746401,
+		Abilities = {"HammerHit", "HammerThrow"},
+	},
+	Knuckles = {
+		AssetId = 9922792744,
+		Abilities = {"GroundPunch", "Block"},
+	},
+	Tails = {
+		AssetId = 9755551117,
+		Abilities = {"Glide", "HighPitchScream"},
+	},
+}
+
+CharacterData.Killers = {
+	VERTEX = {
+		AssetId = 73188668618288,
+		Abilities = {"Lunge", "Invisible"},
+	},
+}
+
+CharacterData.SurvivorOrder = {"Sonic", "Amy", "Knuckles", "Tails"}
+
+CharacterData.MaxHealth = 100
+
+return CharacterData
+]]></ProtectedString>
+		</Properties>
+	</Item>
+
+	<!-- ==================================================================== -->
+	<!-- 2) ServerScriptService/RoundState  (ModuleScript, shared server state) -->
+	<!-- ==================================================================== -->
+	<Item class="ModuleScript" referent="ITEM_RoundState">
+		<Properties>
+			<string name="Name">RoundState</string>
+			<ProtectedString name="Source"><![CDATA[
+local RoundState = {}
+
+RoundState.Phase = "Intermission" -- Intermission, Selection, Teleporting, InRound, Ended
+RoundState.RoundActive = false
+RoundState.Players = {} -- [player] = data table
+
+RoundState.Debug = {
+	FreezeIntermission = false, -- toggle: holds the intermission countdown in place
+	TimerOverride = nil,        -- number|nil: next countdown tick will jump to this value
+	ForceEndRound = false,      -- one-shot: ends the in-progress round on the next tick
+	ForceSpawnRing = false,     -- one-shot: spawns the escape ring immediately
+}
+
+function RoundState.new(player)
+	RoundState.Players[player] = {
+		Role = nil,        -- "Survivor" or "Killer"
+		Character = nil,   -- e.g. "Sonic"
+		Health = 100,
+		Alive = true,
+		Escaped = false,
+		Stunned = false,
+		Frozen = false,
+		Invisible = false,
+		Cooldowns = {},
+		LockedOut = {},
+	}
+	return RoundState.Players[player]
+end
+
+function RoundState.get(player)
+	return RoundState.Players[player]
+end
+
+function RoundState.reset(player)
+	local d = RoundState.Players[player]
+	if not d then return end
+	d.Health = 100
+	d.Alive = true
+	d.Escaped = false
+	d.Stunned = false
+	d.Frozen = false
+	d.Invisible = false
+	d.Cooldowns = {}
+	d.LockedOut = {}
+end
+
+return RoundState
+]]></ProtectedString>
+		</Properties>
+	</Item>
+
+	<!-- ==================================================================== -->
+	<!-- 3) ReplicatedStorage/Remotes  (Folder of RemoteEvents)                -->
+	<!-- ==================================================================== -->
+	<Item class="Folder" referent="ITEM_Remotes">
+		<Properties>
+			<string name="Name">Remotes</string>
+		</Properties>
+		<Item class="RemoteEvent" referent="ITEM_R_SelectCharacter">
+			<Properties><string name="Name">SelectCharacter</string></Properties>
+		</Item>
+		<Item class="RemoteEvent" referent="ITEM_R_SelectionInfo">
+			<Properties><string name="Name">SelectionInfo</string></Properties>
+		</Item>
+		<Item class="RemoteEvent" referent="ITEM_R_CharacterConfirmed">
+			<Properties><string name="Name">CharacterConfirmed</string></Properties>
+		</Item>
+		<Item class="RemoteEvent" referent="ITEM_R_RoundStateChanged">
+			<Properties><string name="Name">RoundStateChanged</string></Properties>
+		</Item>
+		<Item class="RemoteEvent" referent="ITEM_R_UpdateTimer">
+			<Properties><string name="Name">UpdateTimer</string></Properties>
+		</Item>
+		<Item class="RemoteEvent" referent="ITEM_R_UseAbility">
+			<Properties><string name="Name">UseAbility</string></Properties>
+		</Item>
+		<Item class="RemoteEvent" referent="ITEM_R_GlideControl">
+			<Properties><string name="Name">GlideControl</string></Properties>
+		</Item>
+		<Item class="RemoteEvent" referent="ITEM_R_UpdateHealthUI">
+			<Properties><string name="Name">UpdateHealthUI</string></Properties>
+		</Item>
+		<Item class="RemoteEvent" referent="ITEM_R_RoundEndSummary">
+			<Properties><string name="Name">RoundEndSummary</string></Properties>
+		</Item>
+		<Item class="RemoteEvent" referent="ITEM_R_DebugCommand">
+			<Properties><string name="Name">DebugCommand</string></Properties>
+		</Item>
+		<Item class="RemoteEvent" referent="ITEM_R_DebugFeedback">
+			<Properties><string name="Name">DebugFeedback</string></Properties>
+		</Item>
+	</Item>
+
+	<!-- ==================================================================== -->
+	<!-- 4) ServerScriptService/GameManager  (Script)                          -->
+	<!-- ==================================================================== -->
+	<Item class="Script" referent="ITEM_GameManager">
+		<Properties>
+			<string name="Name">GameManager</string>
+			<ProtectedString name="Source"><![CDATA[
+--[[
+	GAME MANAGER  -  place in ServerScriptService
+
+	REQUIRED WORKSPACE SETUP:
+	Create a Folder named "Map" directly in Workspace containing:
+		- LobbySpawn        (Part)  -- where players stand between rounds
+		- SurvivorSpawn     (Part)  -- survivors teleport clustered around this part
+		- KillerSpawn       (Part)  -- killer (VERTEX) teleports here, far from survivors
+		- TourPoints        (Folder of Parts named "1","2","3"... in tour order)
+		- EscapeRingSpawns  (Folder of Parts) -- possible ring locations
+		- SpectateBox       (Part)  -- escaped survivors get teleported above this
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+local InsertService = game:GetService("InsertService")
+local Workspace = game:GetService("Workspace")
+
+local CharacterData = require(ReplicatedStorage:WaitForChild("CharacterData"))
+local RoundState = require(ServerScriptService:WaitForChild("RoundState"))
+
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local SelectCharacter = Remotes:WaitForChild("SelectCharacter")
+local SelectionInfo = Remotes:WaitForChild("SelectionInfo")
+local CharacterConfirmed = Remotes:WaitForChild("CharacterConfirmed")
+local RoundStateChanged = Remotes:WaitForChild("RoundStateChanged")
+local UpdateTimer = Remotes:WaitForChild("UpdateTimer")
+local UpdateHealthUI = Remotes:WaitForChild("UpdateHealthUI")
+local RoundEndSummary = Remotes:WaitForChild("RoundEndSummary")
+
+local Map = Workspace:WaitForChild("Map")
+
+local INTERMISSION_TIME = 20
+local SELECTION_TIME = 20
+local ROUND_TIME = 250
+local RING_APPEARS_AT = 120
+local END_SCREEN_TIME = 20
+
+Players.PlayerAdded:Connect(function(plr)
+	RoundState.new(plr)
+end)
+for _, plr in ipairs(Players:GetPlayers()) do
+	RoundState.new(plr)
+end
+Players.PlayerRemoving:Connect(function(plr)
+	RoundState.Players[plr] = nil
+end)
+
+local pendingSelection = {}
+
+SelectCharacter.OnServerEvent:Connect(function(player, characterName)
+	if RoundState.Phase ~= "Selection" then return end
+	local data = RoundState.get(player)
+	if not data or not data.Role then return end
+
+	local valid = false
+	if data.Role == "Survivor" and CharacterData.Survivors[characterName] then
+		valid = true
+	elseif data.Role == "Killer" and CharacterData.Killers[characterName] then
+		valid = true
+	end
+
+	if valid then
+		pendingSelection[player] = characterName
+		CharacterConfirmed:FireClient(player, true, characterName)
+	else
+		CharacterConfirmed:FireClient(player, false, characterName)
+	end
+end)
+
+local function morphPlayer(player, assetId)
+	local char = player.Character
+	if not char then return end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local targetCFrame = hrp and hrp.CFrame or CFrame.new(0, 10, 0)
+
+	local ok, asset = pcall(function()
+		return InsertService:LoadAsset(assetId)
+	end)
+	if not ok or not asset then return end
+
+	local model = asset:FindFirstChildWhichIsA("Model")
+	if not model then
+		asset:Destroy()
+		return
+	end
+	model.Parent = Workspace
+	model.Name = player.Name
+
+	if not model.PrimaryPart then
+		local newHRP = model:FindFirstChild("HumanoidRootPart")
+		if newHRP then
+			model.PrimaryPart = newHRP
+		end
+	end
+
+	if model.PrimaryPart then
+		model:SetPrimaryPartCFrame(targetCFrame)
+	end
+
+	player.Character = model
+	asset:Destroy()
+end
+
+local function broadcastPhase(phase, extra)
+	RoundState.Phase = phase
+	RoundStateChanged:FireAllClients(phase, extra)
+end
+
+local function countdown(seconds, phase)
+	local t = seconds
+	while t >= 0 do
+		if RoundState.Phase ~= phase then return false end
+
+		if RoundState.Debug.TimerOverride ~= nil then
+			t = RoundState.Debug.TimerOverride
+			RoundState.Debug.TimerOverride = nil
+		end
+
+		UpdateTimer:FireAllClients(t, phase)
+
+		if phase == "Intermission" and RoundState.Debug.FreezeIntermission then
+			task.wait(1)
+		else
+			task.wait(1)
+			t -= 1
+		end
+	end
+	return true
+end
+
+local function buildHealthSnapshot()
+	local snap = {}
+	for plr, data in pairs(RoundState.Players) do
+		if data.Role then
+			snap[#snap + 1] = {
+				UserId = plr.UserId,
+				Name = plr.Name,
+				Character = data.Character,
+				Health = data.Health,
+				Status = data.Escaped and "Escaped" or (data.Alive and "Alive" or "Dead"),
+				Role = data.Role,
+			}
+		end
+	end
+	return snap
+end
+
+local function teleportToLobby(plr)
+	local char = plr.Character
+	local lobbySpawn = Map:FindFirstChild("LobbySpawn")
+	if char and lobbySpawn then
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			hrp.CFrame = lobbySpawn.CFrame + Vector3.new(math.random(-5,5), 3, math.random(-5,5))
+		end
+	end
+end
+
+local function spawnEscapeRing(onTouch)
+	local spawnsFolder = Map:FindFirstChild("EscapeRingSpawns")
+	if not spawnsFolder then return nil end
+	local spots = spawnsFolder:GetChildren()
+	if #spots == 0 then return nil end
+	local spot = spots[math.random(1, #spots)]
+
+	local ring = Instance.new("Part")
+	ring.Name = "EscapeRing"
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(1, 8, 8)
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.Material = Enum.Material.Neon
+	ring.Color = Color3.fromRGB(0, 255, 120)
+	ring.CFrame = spot.CFrame * CFrame.Angles(0, 0, math.rad(90))
+	ring.Parent = Workspace
+
+	task.spawn(function()
+		while ring.Parent do
+			ring.CFrame = ring.CFrame * CFrame.Angles(0, math.rad(4), 0)
+			task.wait(0.05)
+		end
+	end)
+
+	local touched = {}
+	local conn
+	conn = ring.Touched:Connect(function(hit)
+		local char = hit:FindFirstAncestorOfClass("Model")
+		if not char then return end
+		local plr = Players:GetPlayerFromCharacter(char)
+		if not plr or touched[plr] then return end
+		local data = RoundState.get(plr)
+		if not data or data.Role ~= "Survivor" or not data.Alive or data.Escaped then return end
+		touched[plr] = true
+		data.Escaped = true
+		onTouch(plr)
+	end)
+
+	return ring, conn
+end
+
+local function freezeCharacter(plr)
+	local char = plr.Character
+	if not char then return end
+	local hum = char:FindFirstChildWhichIsA("Humanoid")
+	if hum then
+		hum.WalkSpeed = 0
+		hum.JumpPower = 0
+		hum.AutoRotate = false
+	end
+end
+
+local function unfreezeCharacter(plr)
+	local char = plr.Character
+	if not char then return end
+	local hum = char:FindFirstChildWhichIsA("Humanoid")
+	if hum then
+		hum.WalkSpeed = 16
+		hum.JumpPower = 50
+		hum.AutoRotate = true
+	end
+end
+
+while true do
+	-- ===================== INTERMISSION =====================
+	pendingSelection = {}
+	RoundState.Debug.ForceEndRound = false
+	RoundState.Debug.ForceSpawnRing = false
+	RoundState.Debug.TimerOverride = nil
+	broadcastPhase("Intermission", "Starting Round...")
+
+	local activePlayers = Players:GetPlayers()
+	for _, plr in ipairs(activePlayers) do
+		RoundState.reset(plr)
+		local d = RoundState.get(plr)
+		if d then
+			d.Role = nil
+			d.Character = nil
+		end
+		teleportToLobby(plr)
+	end
+
+	countdown(INTERMISSION_TIME, "Intermission")
+
+	activePlayers = Players:GetPlayers()
+	if #activePlayers < 2 then
+		task.wait(3)
+		continue
+	end
+
+	local killer = activePlayers[math.random(1, #activePlayers)]
+	for _, plr in ipairs(activePlayers) do
+		local d = RoundState.get(plr)
+		if plr == killer then
+			d.Role = "Killer"
+		else
+			d.Role = "Survivor"
+		end
+	end
+
+	-- ===================== SELECTION (camera tour) =====================
+	broadcastPhase("Selection")
+	for _, plr in ipairs(activePlayers) do
+		local d = RoundState.get(plr)
+		if d.Role == "Survivor" then
+			SelectionInfo:FireClient(plr, "Survivor", CharacterData.SurvivorOrder)
+		else
+			SelectionInfo:FireClient(plr, "Killer", {"VERTEX"})
+		end
+	end
+
+	countdown(SELECTION_TIME, "Selection")
+
+	for _, plr in ipairs(activePlayers) do
+		local d = RoundState.get(plr)
+		if d.Role == "Survivor" then
+			d.Character = pendingSelection[plr] or CharacterData.SurvivorOrder[1]
+		else
+			d.Character = "VERTEX"
+		end
+	end
+
+	-- ===================== TELEPORT + MORPH =====================
+	broadcastPhase("Teleporting")
+	local survivorSpawn = Map:FindFirstChild("SurvivorSpawn")
+	local killerSpawn = Map:FindFirstChild("KillerSpawn")
+
+	for _, plr in ipairs(activePlayers) do
+		local d = RoundState.get(plr)
+		local char = plr.Character
+		if char and char:FindFirstChild("HumanoidRootPart") then
+			if d.Role == "Survivor" and survivorSpawn then
+				char.HumanoidRootPart.CFrame = survivorSpawn.CFrame + Vector3.new(math.random(-6,6), 3, math.random(-6,6))
+			elseif d.Role == "Killer" and killerSpawn then
+				char.HumanoidRootPart.CFrame = killerSpawn.CFrame + Vector3.new(0, 3, 0)
+			end
+		end
+
+		local info = (d.Role == "Survivor") and CharacterData.Survivors[d.Character] or CharacterData.Killers[d.Character]
+		if info then
+			task.spawn(function()
+				morphPlayer(plr, info.AssetId)
+			end)
+		end
+	end
+
+	task.wait(2)
+
+	-- ===================== IN ROUND =====================
+	broadcastPhase("InRound")
+	RoundState.RoundActive = true
+	local remaining = ROUND_TIME
+	local ringSpawned = false
+	local ring, ringConn
+
+	local function checkEnded()
+		local killerPlr
+		local anyoneAliveNotEscaped = false
+		for _, plr in ipairs(activePlayers) do
+			local d = RoundState.get(plr)
+			if d.Role == "Killer" then
+				killerPlr = plr
+			elseif d.Role == "Survivor" and d.Alive and not d.Escaped then
+				anyoneAliveNotEscaped = true
+			end
+		end
+		if killerPlr and killerPlr.Parent == nil then
+			return true
+		end
+		if not anyoneAliveNotEscaped then
+			return true
+		end
+		return false
+	end
+
+	while remaining > 0 do
+		if RoundState.Debug.TimerOverride ~= nil then
+			remaining = RoundState.Debug.TimerOverride
+			RoundState.Debug.TimerOverride = nil
+		end
+
+		task.wait(1)
+		remaining -= 1
+		UpdateTimer:FireAllClients(remaining, "InRound")
+		UpdateHealthUI:FireAllClients(buildHealthSnapshot())
+
+		if (remaining <= RING_APPEARS_AT or RoundState.Debug.ForceSpawnRing) and not ringSpawned then
+			ringSpawned = true
+			RoundState.Debug.ForceSpawnRing = false
+			ring, ringConn = spawnEscapeRing(function(plr)
+				local char = plr.Character
+				local spectateBox = Map:FindFirstChild("SpectateBox")
+				if char and char:FindFirstChild("HumanoidRootPart") and spectateBox then
+					char.HumanoidRootPart.CFrame = spectateBox.CFrame + Vector3.new(0, 5, 0)
+				end
+				UpdateHealthUI:FireAllClients(buildHealthSnapshot())
+			end)
+		end
+
+		if checkEnded() or RoundState.Debug.ForceEndRound then
+			RoundState.Debug.ForceEndRound = false
+			break
+		end
+	end
+
+	RoundState.RoundActive = false
+	if ring then ring:Destroy() end
+	if ringConn then ringConn:Disconnect() end
+
+	for _, plr in ipairs(activePlayers) do
+		local d = RoundState.get(plr)
+		if d and d.Alive and not d.Escaped then
+			freezeCharacter(plr)
+		end
+	end
+
+	-- ===================== ENDED =====================
+	broadcastPhase("Ended")
+	RoundEndSummary:FireAllClients(buildHealthSnapshot())
+	task.wait(END_SCREEN_TIME)
+
+	for _, plr in ipairs(activePlayers) do
+		unfreezeCharacter(plr)
+	end
+end
+]]></ProtectedString>
+		</Properties>
+	</Item>
+
+	<!-- ==================================================================== -->
+	<!-- 5) ServerScriptService/AbilityHandler  (Script)                       -->
+	<!-- ==================================================================== -->
+	<Item class="Script" referent="ITEM_AbilityHandler">
+		<Properties>
+			<string name="Name">AbilityHandler</string>
+			<ProtectedString name="Source"><![CDATA[
+--[[
+	ABILITY HANDLER  -  place in ServerScriptService
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+local Workspace = game:GetService("Workspace")
+
+local RoundState = require(ServerScriptService:WaitForChild("RoundState"))
+
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local UseAbility = Remotes:WaitForChild("UseAbility")
+local GlideControl = Remotes:WaitForChild("GlideControl")
+
+local COOLDOWNS = {
+	Lunge = 1.5,
+	Invisible = 10,
+	PeelOut = 30,
+	DropDash = 23,
+	Glide = 0,
+	HighPitchScream = 35,
+	HammerHit = 6,
+	HammerThrow = 8,
+	GroundPunch = 8,
+	Block = 6,
+}
+
+local function onCooldown(data, ability)
+	local last = data.Cooldowns[ability]
+	if not last then return false end
+	return (os.clock() - last) < COOLDOWNS[ability]
+end
+
+local function setCooldown(data, ability)
+	data.Cooldowns[ability] = os.clock()
+end
+
+local function getCharsInBox(cframe, size, ignoreList)
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = ignoreList or {}
+	local parts = Workspace:GetPartBoundsInBox(cframe, size, params)
+	local found = {}
+	local seen = {}
+	for _, part in ipairs(parts) do
+		local model = part:FindFirstAncestorOfClass("Model")
+		if model and not seen[model] then
+			local plr = Players:GetPlayerFromCharacter(model)
+			if plr then
+				seen[model] = true
+				found[#found + 1] = plr
+			end
+		end
+	end
+	return found
+end
+
+local function damagePlayer(plr, amount)
+	local data = RoundState.get(plr)
+	if not data or not data.Alive then return end
+	data.Health = math.max(0, data.Health - amount)
+	if data.Health <= 0 then
+		data.Alive = false
+		local char = plr.Character
+		local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+		if hum then hum.Health = 0 end
+	end
+end
+
+local function stunPlayer(plr, duration)
+	local data = RoundState.get(plr)
+	if not data then return end
+	data.Stunned = true
+	local char = plr.Character
+	local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+	if hum then
+		hum.WalkSpeed = 0
+		hum.JumpPower = 0
+	end
+	task.delay(duration, function()
+		data.Stunned = false
+		if hum and hum.Parent then
+			hum.WalkSpeed = 16
+			hum.JumpPower = 50
+		end
+	end)
+end
+
+-- ===================== VERTEX =====================
+
+local function doLunge(player, data)
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	local size = Vector3.new(5, 5, 7)
+	local cframe = hrp.CFrame * CFrame.new(0, 0, -5)
+	local hits = getCharsInBox(cframe, size, {char})
+	for _, plr in ipairs(hits) do
+		local d = RoundState.get(plr)
+		if d and d.Role == "Survivor" then
+			if d.LockedOut.Block then
+				stunPlayer(player, 2)
+				d.LockedOut.Block = nil
+			else
+				damagePlayer(plr, 40)
+			end
+		end
+	end
+end
+
+local invisibleTokens = {}
+
+local function doInvisible(player, data)
+	local char = player.Character
+	if not char then return end
+	local token = {}
+	invisibleTokens[player] = token
+
+	if data.Invisible then
+		data.Invisible = false
+		char:SetAttribute("IsInvisible", false)
+		return
+	end
+
+	data.Invisible = true
+	char:SetAttribute("IsInvisible", true)
+
+	task.delay(20, function()
+		if invisibleTokens[player] == token and data.Invisible then
+			data.Invisible = false
+			if char.Parent then
+				char:SetAttribute("IsInvisible", false)
+			end
+		end
+	end)
+end
+
+-- ===================== SONIC =====================
+
+local sonicTokens = {}
+
+local function doPeelOut(player, data)
+	local char = player.Character
+	local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hum or not hrp then return end
+
+	local token = {}
+	sonicTokens[player] = token
+
+	hum.WalkSpeed = 0
+	task.wait(5)
+	if sonicTokens[player] ~= token or not hrp.Parent then return end
+
+	local moveDir = hrp.CFrame.LookVector
+	hum.WalkSpeed = 60
+
+	local carried = {}
+	local connection
+	connection = hrp.Touched:Connect(function(hitPart)
+		local model = hitPart:FindFirstAncestorOfClass("Model")
+		local otherPlr = model and Players:GetPlayerFromCharacter(model)
+		if otherPlr and otherPlr ~= player then
+			local od = RoundState.get(otherPlr)
+			if od and od.Role == "Survivor" then
+				carried[otherPlr] = true
+			end
+		end
+	end)
+
+	local elapsed = 0
+	while elapsed < 10 and sonicTokens[player] == token and hrp.Parent do
+		local step = 0.1
+		hrp.CFrame = hrp.CFrame + moveDir * (60 * step)
+		for otherPlr in pairs(carried) do
+			local oChar = otherPlr.Character
+			local oHrp = oChar and oChar:FindFirstChild("HumanoidRootPart")
+			if oHrp then
+				oHrp.CFrame = hrp.CFrame * CFrame.new(0, 0, 3)
+			end
+		end
+		task.wait(step)
+		elapsed += step
+	end
+
+	connection:Disconnect()
+	if hum.Parent then hum.WalkSpeed = 16 end
+end
+
+local function doDropDash(player, data)
+	local char = player.Character
+	local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hum or not hrp then return end
+
+	hum.WalkSpeed = 22
+	local endTime = os.clock() + 9
+
+	task.spawn(function()
+		while os.clock() < endTime and char.Parent do
+			local size = Vector3.new(4, 4, 4)
+			local hits = getCharsInBox(hrp.CFrame, size, {char})
+			for _, plr in ipairs(hits) do
+				local d = RoundState.get(plr)
+				if d and d.Role == "Killer" then
+					stunPlayer(plr, 5)
+					local kHum = plr.Character and plr.Character:FindFirstChildWhichIsA("Humanoid")
+					if kHum then
+						kHum.PlatformStand = true
+						task.delay(5, function()
+							if kHum.Parent then kHum.PlatformStand = false end
+						end)
+					end
+				end
+			end
+			task.wait(0.2)
+		end
+		if hum.Parent then hum.WalkSpeed = 16 end
+	end)
+end
+
+-- ===================== TAILS =====================
+
+local glideActive = {}
+
+local function doGlide(player, data)
+	local char = player.Character
+	local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hum or not hrp then return end
+
+	if glideActive[player] then
+		glideActive[player] = nil
+		return
+	end
+
+	local token = {}
+	glideActive[player] = token
+
+	local holding = false
+	local heldConn
+	heldConn = GlideControl.OnServerEvent:Connect(function(p, isHolding)
+		if p == player then
+			holding = isHolding
+		end
+	end)
+
+	local elapsed = 0
+	while glideActive[player] == token and elapsed < 6 and char.Parent do
+		local vertical = holding and 8 or -4
+		hrp.CFrame = hrp.CFrame + Vector3.new(0, vertical * 0.1, 0)
+		task.wait(0.1)
+		elapsed += 0.1
+	end
+
+	heldConn:Disconnect()
+	glideActive[player] = nil
+end
+
+local function doHighPitchScream(player, data)
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	local size = Vector3.new(60, 20, 60)
+	local hits = getCharsInBox(hrp.CFrame, size, {char})
+	for _, plr in ipairs(hits) do
+		local d = RoundState.get(plr)
+		if d and d.Role == "Killer" then
+			local kChar = plr.Character
+			local kHrp = kChar and kChar:FindFirstChild("HumanoidRootPart")
+			local kHum = kChar and kChar:FindFirstChildWhichIsA("Humanoid")
+			if kHrp then
+				local away = (kHrp.Position - hrp.Position)
+				away = away.Magnitude > 0 and away.Unit or Vector3.new(0,0,1)
+				kHrp.CFrame = kHrp.CFrame + away * 15
+			end
+			if kHum then
+				kHum.PlatformStand = true
+				task.delay(2.5, function()
+					if kHum.Parent then kHum.PlatformStand = false end
+				end)
+			end
+		end
+	end
+end
+
+-- ===================== AMY =====================
+
+local amyLockout = {}
+
+local function doHammerHit(player, data)
+	if amyLockout[player] then return end
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	hrp.CFrame = hrp.CFrame + hrp.CFrame.LookVector * 4
+
+	local size = Vector3.new(5, 5, 6)
+	local cframe = hrp.CFrame * CFrame.new(0, 0, -4)
+	local hits = getCharsInBox(cframe, size, {char})
+	for _, plr in ipairs(hits) do
+		local d = RoundState.get(plr)
+		if d and d.Role == "Killer" then
+			stunPlayer(plr, 4.3)
+		end
+	end
+end
+
+local function doHammerThrow(player, data, targetPos)
+	if amyLockout[player] then return end
+	if not targetPos then return end
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	amyLockout[player] = true
+	setCooldown(data, "HammerHit")
+	setCooldown(data, "HammerThrow")
+
+	local hammer = Instance.new("Part")
+	hammer.Size = Vector3.new(2, 2, 2)
+	hammer.Shape = Enum.PartType.Block
+	hammer.Color = Color3.fromRGB(255, 100, 150)
+	hammer.CanCollide = false
+	hammer.Anchored = true
+	hammer.Position = hrp.Position + Vector3.new(0, 2, 0)
+	hammer.Parent = Workspace
+
+	local dir = (targetPos - hammer.Position)
+	local dist = dir.Magnitude
+	dir = dist > 0 and dir.Unit or Vector3.new(0,0,-1)
+
+	task.spawn(function()
+		local traveled = 0
+		local speed = 90
+		while traveled < dist and hammer.Parent do
+			hammer.Position = hammer.Position + dir * speed * 0.05
+			traveled += speed * 0.05
+
+			local hits = getCharsInBox(hammer.CFrame, Vector3.new(3,3,3), {hammer})
+			local hitKiller = false
+			for _, plr in ipairs(hits) do
+				local d = RoundState.get(plr)
+				if d and d.Role == "Killer" then
+					stunPlayer(plr, 4.6)
+					hitKiller = true
+					break
+				end
+			end
+			if hitKiller then break end
+			task.wait(0.05)
+		end
+		if hammer.Parent then hammer:Destroy() end
+	end)
+
+	task.delay(10, function()
+		amyLockout[player] = nil
+	end)
+end
+
+-- ===================== KNUCKLES =====================
+
+local function doGroundPunch(player, data)
+	local char = player.Character
+	local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hum or not hrp then return end
+
+	hrp.CFrame = hrp.CFrame + Vector3.new(0, 12, 0)
+	task.wait(0.6)
+	if not hrp.Parent then return end
+
+	local size = Vector3.new(24, 12, 24)
+	local hits = getCharsInBox(hrp.CFrame, size, {char})
+	for _, plr in ipairs(hits) do
+		local d = RoundState.get(plr)
+		if d and d.Role == "Killer" then
+			local kChar = plr.Character
+			local kHrp = kChar and kChar:FindFirstChild("HumanoidRootPart")
+			local kHum = kChar and kChar:FindFirstChildWhichIsA("Humanoid")
+			if kHrp then
+				local away = (kHrp.Position - hrp.Position)
+				away = away.Magnitude > 0 and away.Unit or Vector3.new(0,0,1)
+				kHrp.CFrame = kHrp.CFrame + away * 12
+			end
+			if kHum then
+				kHum.PlatformStand = true
+				task.delay(3.5, function()
+					if kHum.Parent then kHum.PlatformStand = false end
+				end)
+			end
+		end
+	end
+end
+
+local function doBlock(player, data)
+	data.LockedOut.Block = true
+	task.delay(1.5, function()
+		data.LockedOut.Block = nil
+	end)
+end
+
+-- ===================== ROUTER =====================
+
+local HANDLERS = {
+	Lunge = doLunge,
+	Invisible = doInvisible,
+	PeelOut = doPeelOut,
+	DropDash = doDropDash,
+	Glide = doGlide,
+	HighPitchScream = doHighPitchScream,
+	HammerHit = doHammerHit,
+	HammerThrow = doHammerThrow,
+	GroundPunch = doGroundPunch,
+	Block = doBlock,
+}
+
+local NO_COOLDOWN_GATE = {
+	Glide = true,
+}
+
+UseAbility.OnServerEvent:Connect(function(player, abilityName, extra)
+	if not RoundState.RoundActive then return end
+	local data = RoundState.get(player)
+	if not data or not data.Character then return end
+	if data.Stunned then return end
+
+	local handler = HANDLERS[abilityName]
+	if not handler then return end
+
+	if not NO_COOLDOWN_GATE[abilityName] then
+		if onCooldown(data, abilityName) then return end
+		setCooldown(data, abilityName)
+	end
+
+	handler(player, data, extra)
+end)
+]]></ProtectedString>
+		</Properties>
+	</Item>
+
+	<!-- ==================================================================== -->
+	<!-- 6) ServerScriptService/DebugHandler  (Script)                         -->
+	<!--    Edit the ADMINS table below with your Roblox username(s).         -->
+	<!-- ==================================================================== -->
+	<Item class="Script" referent="ITEM_DebugHandler">
+		<Properties>
+			<string name="Name">DebugHandler</string>
+			<ProtectedString name="Source"><![CDATA[
+--[[
+	DEBUG HANDLER  -  place in ServerScriptService
+	Edit ADMINS below with your Roblox username(s) to authorize the debug panel (F4 in-game).
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+local InsertService = game:GetService("InsertService")
+local Workspace = game:GetService("Workspace")
+
+local CharacterData = require(ReplicatedStorage:WaitForChild("CharacterData"))
+local RoundState = require(ServerScriptService:WaitForChild("RoundState"))
+
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local DebugCommand = Remotes:WaitForChild("DebugCommand")
+local DebugFeedback = Remotes:WaitForChild("DebugFeedback")
+
+local ADMINS = {
+	["YourUsernameHere"] = true,
+}
+
+local function isAdmin(player)
+	return ADMINS[player.Name] == true
+end
+
+local function morphPlayer(player, assetId)
+	local char = player.Character
+	if not char then return end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local targetCFrame = hrp and hrp.CFrame or CFrame.new(0, 10, 0)
+
+	local ok, asset = pcall(function()
+		return InsertService:LoadAsset(assetId)
+	end)
+	if not ok or not asset then return end
+
+	local model = asset:FindFirstChildWhichIsA("Model")
+	if not model then
+		asset:Destroy()
+		return
+	end
+	model.Parent = Workspace
+	model.Name = player.Name
+
+	if not model.PrimaryPart then
+		local newHRP = model:FindFirstChild("HumanoidRootPart")
+		if newHRP then
+			model.PrimaryPart = newHRP
+		end
+	end
+
+	if model.PrimaryPart then
+		model:SetPrimaryPartCFrame(targetCFrame)
+	end
+
+	player.Character = model
+	asset:Destroy()
+end
+
+local function findCharacterInfo(name)
+	return CharacterData.Survivors[name] or CharacterData.Killers[name]
+end
+
+DebugCommand.OnServerEvent:Connect(function(player, action, value)
+	if not isAdmin(player) then
+		DebugFeedback:FireClient(player, "Not authorized.")
+		return
+	end
+
+	local data = RoundState.get(player)
+
+	if action == "FreezeIntermission" then
+		RoundState.Debug.FreezeIntermission = not RoundState.Debug.FreezeIntermission
+		DebugFeedback:FireClient(player, "Freeze Intermission: " .. tostring(RoundState.Debug.FreezeIntermission))
+
+	elseif action == "Morph" then
+		local info = findCharacterInfo(value)
+		if not info then
+			DebugFeedback:FireClient(player, "Unknown character: " .. tostring(value))
+			return
+		end
+		morphPlayer(player, info.AssetId)
+		if data then data.Character = value end
+		DebugFeedback:FireClient(player, "Morphed into " .. tostring(value))
+
+	elseif action == "SetTimer" then
+		local num = tonumber(value)
+		if not num then
+			DebugFeedback:FireClient(player, "Invalid timer value.")
+			return
+		end
+		RoundState.Debug.TimerOverride = math.max(0, math.floor(num))
+		DebugFeedback:FireClient(player, "Timer set to " .. tostring(num))
+
+	elseif action == "DamageSelf" then
+		local num = tonumber(value)
+		if not num or not data then
+			DebugFeedback:FireClient(player, "Invalid damage value.")
+			return
+		end
+		data.Health = math.max(0, data.Health - num)
+		if data.Health <= 0 then
+			data.Alive = false
+			local char = player.Character
+			local hum = char and char:FindFirstChildWhichIsA("Humanoid")
+			if hum then hum.Health = 0 end
+		end
+		DebugFeedback:FireClient(player, "Damaged self for " .. tostring(num) .. " (HP: " .. tostring(data.Health) .. ")")
+
+	elseif action == "RemoveCooldowns" then
+		if data then
+			data.Cooldowns = {}
+			data.LockedOut = {}
+		end
+		DebugFeedback:FireClient(player, "Cooldowns cleared.")
+
+	elseif action == "SetHealth" then
+		local num = tonumber(value)
+		if not num or not data then
+			DebugFeedback:FireClient(player, "Invalid health value.")
+			return
+		end
+		data.Health = math.clamp(num, 0, 100)
+		data.Alive = data.Health > 0
+		DebugFeedback:FireClient(player, "Health set to " .. tostring(data.Health))
+
+	elseif action == "EndRoundAutomatically" then
+		if RoundState.Phase ~= "InRound" then
+			DebugFeedback:FireClient(player, "Round isn't active.")
+			return
+		end
+		RoundState.Debug.ForceEndRound = true
+		DebugFeedback:FireClient(player, "Round will end on next tick.")
+
+	elseif action == "SpawnRing" then
+		if RoundState.Phase ~= "InRound" then
+			DebugFeedback:FireClient(player, "Round isn't active.")
+			return
+		end
+		RoundState.Debug.ForceSpawnRing = true
+		DebugFeedback:FireClient(player, "Ring will spawn on next tick.")
+
+	else
+		DebugFeedback:FireClient(player, "Unknown command.")
+	end
+end)
+]]></ProtectedString>
+		</Properties>
+	</Item>
+
+	<!-- ==================================================================== -->
+	<!-- 7) StarterGui/MainUI  (ScreenGui) containing UIController LocalScript -->
+	<!-- ==================================================================== -->
+	<Item class="ScreenGui" referent="ITEM_MainUI">
+		<Properties>
+			<string name="Name">MainUI</string>
+			<bool name="ResetOnSpawn">false</bool>
+		</Properties>
+		<Item class="LocalScript" referent="ITEM_UIController">
+			<Properties>
+				<string name="Name">UIController</string>
+				<ProtectedString name="Source"><![CDATA[
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+
+local CharacterData = require(ReplicatedStorage:WaitForChild("CharacterData"))
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local SelectCharacter = Remotes:WaitForChild("SelectCharacter")
+local SelectionInfo = Remotes:WaitForChild("SelectionInfo")
+local CharacterConfirmed = Remotes:WaitForChild("CharacterConfirmed")
+local RoundStateChanged = Remotes:WaitForChild("RoundStateChanged")
+local UpdateTimer = Remotes:WaitForChild("UpdateTimer")
+local UseAbility = Remotes:WaitForChild("UseAbility")
+local GlideControl = Remotes:WaitForChild("GlideControl")
+local UpdateHealthUI = Remotes:WaitForChild("UpdateHealthUI")
+local RoundEndSummary = Remotes:WaitForChild("RoundEndSummary")
+
+local screenGui = script.Parent
+
+-- ===================== BUILD UI =====================
+
+local function newFrame(name, parent, size, pos, transparency)
+	local f = Instance.new("Frame")
+	f.Name = name
+	f.Size = size
+	f.Position = pos
+	f.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+	f.BackgroundTransparency = transparency or 0.3
+	f.BorderSizePixel = 0
+	f.Parent = parent
+	return f
+end
+
+local function newLabel(name, parent, size, pos, text, textSize)
+	local l = Instance.new("TextLabel")
+	l.Name = name
+	l.Size = size
+	l.Position = pos
+	l.BackgroundTransparency = 1
+	l.Text = text or ""
+	l.TextColor3 = Color3.fromRGB(255,255,255)
+	l.Font = Enum.Font.GothamBold
+	l.TextSize = textSize or 24
+	l.Parent = parent
+	return l
+end
+
+local function newButton(name, parent, size, pos, text)
+	local b = Instance.new("TextButton")
+	b.Name = name
+	b.Size = size
+	b.Position = pos
+	b.BackgroundColor3 = Color3.fromRGB(50,50,50)
+	b.Text = text
+	b.TextColor3 = Color3.fromRGB(255,255,255)
+	b.Font = Enum.Font.GothamBold
+	b.TextSize = 22
+	b.Parent = parent
+	return b
+end
+
+local topFrame = newFrame("TopFrame", screenGui, UDim2.new(0,300,0,70), UDim2.new(0.5,-150,0,10), 0.4)
+local timerLabel = newLabel("TimerLabel", topFrame, UDim2.new(1,0,0,36), UDim2.new(0,0,0,0), "", 30)
+timerLabel.TextXAlignment = Enum.TextXAlignment.Center
+local phaseLabel = newLabel("PhaseLabel", topFrame, UDim2.new(1,0,0,28), UDim2.new(0,0,0,36), "", 20)
+phaseLabel.TextXAlignment = Enum.TextXAlignment.Center
+
+local selectionFrame = newFrame("SelectionFrame", screenGui, UDim2.new(0,500,0,90), UDim2.new(0.5,-250,1,-160), 0.25)
+selectionFrame.Visible = false
+local prevBtn = newButton("PrevBtn", selectionFrame, UDim2.new(0,60,0,60), UDim2.new(0,10,0,15), "<")
+local nextBtn = newButton("NextBtn", selectionFrame, UDim2.new(0,60,0,60), UDim2.new(1,-70,0,15), ">")
+local nameLabel = newLabel("NameLabel", selectionFrame, UDim2.new(0,260,0,30), UDim2.new(0.5,-130,0,10), "", 26)
+nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+local selectBtn = newButton("SelectBtn", selectionFrame, UDim2.new(0,260,0,40), UDim2.new(0.5,-130,0,45), "Select Character")
+
+local healthFrame = newFrame("HealthFrame", screenGui, UDim2.new(0,240,0,220), UDim2.new(0,10,1,-240), 0.35)
+local healthList = Instance.new("UIListLayout")
+healthList.Padding = UDim.new(0,4)
+healthList.Parent = healthFrame
+
+local endFrame = newFrame("EndFrame", screenGui, UDim2.new(0,400,0,300), UDim2.new(1,20,0.5,-150), 0.2)
+endFrame.Visible = false
+local endTitle = newLabel("EndTitle", endFrame, UDim2.new(1,0,0,30), UDim2.new(0,0,0,5), "Round Over", 26)
+endTitle.TextXAlignment = Enum.TextXAlignment.Center
+local endHolder = newFrame("EndHolder", endFrame, UDim2.new(1,-20,1,-40), UDim2.new(0,10,0,35), 1)
+local endList = Instance.new("UIListLayout")
+endList.Padding = UDim.new(0,4)
+endList.Parent = endHolder
+
+-- ===================== SELECTION LOGIC =====================
+
+local currentList = CharacterData.SurvivorOrder
+local currentIndex = 1
+
+local function refreshNameLabel()
+	nameLabel.Text = currentList[currentIndex] or "?"
+end
+
+prevBtn.MouseButton1Click:Connect(function()
+	currentIndex -= 1
+	if currentIndex < 1 then currentIndex = #currentList end
+	refreshNameLabel()
+end)
+
+nextBtn.MouseButton1Click:Connect(function()
+	currentIndex += 1
+	if currentIndex > #currentList then currentIndex = 1 end
+	refreshNameLabel()
+end)
+
+selectBtn.MouseButton1Click:Connect(function()
+	SelectCharacter:FireServer(currentList[currentIndex])
+end)
+
+local myCharacterName = nil
+
+CharacterConfirmed.OnClientEvent:Connect(function(success, name)
+	if success then
+		selectBtn.Text = "Selected: " .. name
+		myCharacterName = name
+	else
+		selectBtn.Text = "Try Again"
+	end
+end)
+
+SelectionInfo.OnClientEvent:Connect(function(role, list)
+	currentList = list
+	currentIndex = 1
+	refreshNameLabel()
+	selectBtn.Text = "Select Character"
+	selectionFrame.Visible = true
+end)
+
+-- ===================== CAMERA TOUR =====================
+
+local camera = Workspace.CurrentCamera
+local tourRunning = false
+
+local function runCameraTour()
+	local map = Workspace:FindFirstChild("Map")
+	local tourPoints = map and map:FindFirstChild("TourPoints")
+	if not tourPoints then return end
+
+	local points = tourPoints:GetChildren()
+	table.sort(points, function(a,b) return a.Name < b.Name end)
+	if #points == 0 then return end
+
+	camera.CameraType = Enum.CameraType.Scriptable
+	tourRunning = true
+
+	local i = 1
+	while tourRunning do
+		local point = points[i]
+		if point then
+			local tween = TweenService:Create(camera, TweenInfo.new(3, Enum.EasingStyle.Sine), {CFrame = point.CFrame})
+			tween:Play()
+			tween.Completed:Wait()
+			task.wait(1.5)
+		end
+		i += 1
+		if i > #points then i = 1 end
+	end
+end
+
+local function stopCameraTour()
+	tourRunning = false
+	camera.CameraType = Enum.CameraType.Custom
+end
+
+-- ===================== PHASE HANDLING =====================
+
+RoundStateChanged.OnClientEvent:Connect(function(phase, extra)
+	phaseLabel.Text = extra or phase
+
+	if phase == "Intermission" then
+		selectionFrame.Visible = false
+		endFrame.Visible = false
+		stopCameraTour()
+	elseif phase == "Selection" then
+		task.spawn(runCameraTour)
+	elseif phase == "Teleporting" then
+		selectionFrame.Visible = false
+		stopCameraTour()
+	elseif phase == "InRound" then
+		selectionFrame.Visible = false
+		endFrame.Visible = false
+	elseif phase == "Ended" then
+		selectionFrame.Visible = false
+	end
+end)
+
+UpdateTimer.OnClientEvent:Connect(function(t)
+	timerLabel.Text = tostring(t)
+end)
+
+-- ===================== HEALTH UI =====================
+
+UpdateHealthUI.OnClientEvent:Connect(function(snapshot)
+	for _, child in ipairs(healthFrame:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+
+	if not snapshot then return end
+
+	for _, entry in ipairs(snapshot) do
+		local row = Instance.new("Frame")
+		row.Size = UDim2.new(1,0,0,32)
+		row.BackgroundTransparency = 1
+		row.Parent = healthFrame
+
+		local bar = Instance.new("Frame")
+		bar.Size = UDim2.new(1,0,1,0)
+		bar.BackgroundColor3 = Color3.fromRGB(60,60,60)
+		bar.BorderSizePixel = 0
+		bar.Parent = row
+
+		local fill = Instance.new("Frame")
+		local pct = math.clamp(entry.Health / 100, 0, 1)
+		fill.Size = UDim2.new(pct,0,1,0)
+		fill.BorderSizePixel = 0
+		if entry.Status == "Escaped" then
+			fill.BackgroundColor3 = Color3.fromRGB(0,255,0)
+		elseif entry.Status == "Dead" then
+			fill.BackgroundColor3 = Color3.fromRGB(120,0,0)
+		else
+			fill.BackgroundColor3 = Color3.fromRGB(220,40,40)
+		end
+		fill.Parent = bar
+
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1,0,1,0)
+		label.BackgroundTransparency = 1
+		label.Text = entry.Name .. " (" .. tostring(entry.Character) .. ") - " .. tostring(entry.Health)
+		label.TextColor3 = Color3.fromRGB(255,255,255)
+		label.Font = Enum.Font.Gotham
+		label.TextSize = 14
+		label.Parent = bar
+	end
+end)
+
+-- ===================== END SCREEN =====================
+
+RoundEndSummary.OnClientEvent:Connect(function(snapshot)
+	for _, child in ipairs(endHolder:GetChildren()) do
+		if child:IsA("Frame") then child:Destroy() end
+	end
+
+	endFrame.Visible = true
+	local tween = TweenService:Create(endFrame, TweenInfo.new(0.6, Enum.EasingStyle.Quad), {Position = UDim2.new(0.7,0,0.5,-150)})
+	tween:Play()
+
+	if snapshot then
+		for _, entry in ipairs(snapshot) do
+			local row = Instance.new("Frame")
+			row.Size = UDim2.new(1,0,0,26)
+			row.BackgroundTransparency = 1
+			row.Parent = endHolder
+
+			local label = Instance.new("TextLabel")
+			label.Size = UDim2.new(1,0,1,0)
+			label.BackgroundTransparency = 1
+			label.Text = entry.Name .. " - " .. tostring(entry.Character) .. " - HP:" .. tostring(entry.Health) .. " - " .. entry.Status
+			label.TextColor3 = Color3.fromRGB(255,255,255)
+			label.Font = Enum.Font.Gotham
+			label.TextSize = 16
+			label.Parent = row
+		end
+	end
+
+	task.delay(19, function()
+		local outTween = TweenService:Create(endFrame, TweenInfo.new(0.6), {Position = UDim2.new(1,20,0.5,-150)})
+		outTween:Play()
+	end)
+end)
+
+-- ===================== ABILITY INPUT =====================
+
+local abilityKeys = {
+	[Enum.KeyCode.Q] = 1,
+	[Enum.KeyCode.E] = 2,
+}
+
+local glideHeld = false
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if not myCharacterName then return end
+
+	local slot = abilityKeys[input.KeyCode]
+	if slot then
+		local info = CharacterData.Survivors[myCharacterName] or CharacterData.Killers[myCharacterName]
+		if info then
+			local abilityName = info.Abilities[slot]
+			if abilityName then
+				if abilityName == "HammerThrow" then
+					local target = mouse.Hit and mouse.Hit.Position
+					UseAbility:FireServer(abilityName, target)
+				else
+					UseAbility:FireServer(abilityName)
+				end
+				if abilityName == "Glide" then
+					glideHeld = true
+				end
+			end
+		end
+	end
+
+	if input.KeyCode == Enum.KeyCode.Space and glideHeld then
+		GlideControl:FireServer(true)
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+	if input.KeyCode == Enum.KeyCode.Space and glideHeld then
+		GlideControl:FireServer(false)
+	end
+end)
+
+-- ===================== DEBUG PANEL (press F4) =====================
+
+local DebugCommand = Remotes:WaitForChild("DebugCommand")
+local DebugFeedback = Remotes:WaitForChild("DebugFeedback")
+
+local debugFrame = newFrame("DebugFrame", screenGui, UDim2.new(0,260,0,430), UDim2.new(0,10,0,90), 0.15)
+debugFrame.Visible = false
+
+local debugList = Instance.new("UIListLayout")
+debugList.Padding = UDim.new(0,6)
+debugList.Parent = debugFrame
+
+local function debugRow(height)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1,-10,0,height)
+	row.Position = UDim2.new(0,5,0,0)
+	row.BackgroundTransparency = 1
+	row.Parent = debugFrame
+	return row
+end
+
+-- Freeze Intermission
+local freezeRow = debugRow(30)
+local freezeBtn = newButton("FreezeBtn", freezeRow, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), "Freeze Intermission: OFF")
+freezeBtn.TextSize = 14
+freezeBtn.MouseButton1Click:Connect(function()
+	DebugCommand:FireServer("FreezeIntermission")
+end)
+
+-- Morph into character [ < Name > ] [Morph]
+local morphNames = {}
+for _, n in ipairs(CharacterData.SurvivorOrder) do table.insert(morphNames, n) end
+table.insert(morphNames, "VERTEX")
+local morphIndex = 1
+
+local morphRow = debugRow(30)
+local morphPrev = newButton("MorphPrev", morphRow, UDim2.new(0,30,1,0), UDim2.new(0,0,0,0), "<")
+local morphLabel = newLabel("MorphLabel", morphRow, UDim2.new(1,-130,1,0), UDim2.new(0,35,0,0), morphNames[1], 14)
+morphLabel.TextXAlignment = Enum.TextXAlignment.Center
+local morphNext = newButton("MorphNext", morphRow, UDim2.new(0,30,1,0), UDim2.new(1,-95,0,0), ">")
+local morphBtn = newButton("MorphBtn", morphRow, UDim2.new(0,60,1,0), UDim2.new(1,-60,0,0), "Morph")
+morphBtn.TextSize = 12
+
+morphPrev.MouseButton1Click:Connect(function()
+	morphIndex -= 1
+	if morphIndex < 1 then morphIndex = #morphNames end
+	morphLabel.Text = morphNames[morphIndex]
+end)
+morphNext.MouseButton1Click:Connect(function()
+	morphIndex += 1
+	if morphIndex > #morphNames then morphIndex = 1 end
+	morphLabel.Text = morphNames[morphIndex]
+end)
+morphBtn.MouseButton1Click:Connect(function()
+	DebugCommand:FireServer("Morph", morphNames[morphIndex])
+end)
+
+-- Set in-game timer
+local timerRow = debugRow(30)
+local timerBox = Instance.new("TextBox")
+timerBox.Size = UDim2.new(1,-70,1,0)
+timerBox.PlaceholderText = "Seconds"
+timerBox.Text = ""
+timerBox.TextSize = 14
+timerBox.Parent = timerRow
+local timerBtn = newButton("TimerBtn", timerRow, UDim2.new(0,60,1,0), UDim2.new(1,-60,0,0), "Set")
+timerBtn.TextSize = 12
+timerBtn.MouseButton1Click:Connect(function()
+	DebugCommand:FireServer("SetTimer", timerBox.Text)
+end)
+
+-- Damage yourself [value] - Execute
+local dmgRow = debugRow(30)
+local dmgBox = Instance.new("TextBox")
+dmgBox.Size = UDim2.new(1,-80,1,0)
+dmgBox.PlaceholderText = "Damage value"
+dmgBox.Text = ""
+dmgBox.TextSize = 14
+dmgBox.Parent = dmgRow
+local dmgBtn = newButton("DmgBtn", dmgRow, UDim2.new(0,70,1,0), UDim2.new(1,-70,0,0), "Execute")
+dmgBtn.TextSize = 12
+dmgBtn.MouseButton1Click:Connect(function()
+	DebugCommand:FireServer("DamageSelf", dmgBox.Text)
+end)
+
+-- Remove Cooldowns
+local cdRow = debugRow(30)
+local cdBtn = newButton("RemoveCooldownsBtn", cdRow, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), "Remove Cooldowns")
+cdBtn.TextSize = 14
+cdBtn.MouseButton1Click:Connect(function()
+	DebugCommand:FireServer("RemoveCooldowns")
+end)
+
+-- Set Health [value] Enter
+local hpRow = debugRow(30)
+local hpBox = Instance.new("TextBox")
+hpBox.Size = UDim2.new(1,-70,1,0)
+hpBox.PlaceholderText = "Health value"
+hpBox.Text = ""
+hpBox.TextSize = 14
+hpBox.Parent = hpRow
+local hpBtn = newButton("HpBtn", hpRow, UDim2.new(0,60,1,0), UDim2.new(1,-60,0,0), "Enter")
+hpBtn.TextSize = 12
+hpBtn.MouseButton1Click:Connect(function()
+	DebugCommand:FireServer("SetHealth", hpBox.Text)
+end)
+
+-- End Round Automatically
+local endRow = debugRow(30)
+local endBtn = newButton("EndRoundBtn", endRow, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), "End Round Automatically")
+endBtn.TextSize = 14
+endBtn.MouseButton1Click:Connect(function()
+	DebugCommand:FireServer("EndRoundAutomatically")
+end)
+
+-- Spawn Ring
+local ringRow = debugRow(30)
+local ringBtn = newButton("SpawnRingBtn", ringRow, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), "Spawn Ring")
+ringBtn.TextSize = 14
+ringBtn.MouseButton1Click:Connect(function()
+	DebugCommand:FireServer("SpawnRing")
+end)
+
+-- Feedback line
+local feedbackRow = debugRow(50)
+local feedbackLabel = newLabel("FeedbackLabel", feedbackRow, UDim2.new(1,0,1,0), UDim2.new(0,0,0,0), "", 13)
+feedbackLabel.TextWrapped = true
+feedbackLabel.TextXAlignment = Enum.TextXAlignment.Left
+feedbackLabel.TextYAlignment = Enum.TextYAlignment.Top
+
+DebugFeedback.OnClientEvent:Connect(function(msg)
+	feedbackLabel.Text = msg
+	local state = msg:match("^Freeze Intermission: (%a+)")
+	if state then
+		freezeBtn.Text = "Freeze Intermission: " .. state:upper()
+	end
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if input.KeyCode == Enum.KeyCode.F4 then
+		debugFrame.Visible = not debugFrame.Visible
+	end
+end)
+
+-- ===================== INVISIBILITY VISUAL =====================
+
+local function watchCharacterForInvisibility(char)
+	char.AttributeChanged:Connect(function(attr)
+		if attr == "IsInvisible" then
+			local invisible = char:GetAttribute("IsInvisible")
+			local isMe = (char == player.Character)
+			if isMe then return end
+			for _, part in ipairs(char:GetDescendants()) do
+				if part:IsA("BasePart") then
+					part.Transparency = invisible and 1 or 0
+				end
+			end
+		end
+	end)
+end
+
+Players.PlayerAdded:Connect(function(p)
+	p.CharacterAdded:Connect(watchCharacterForInvisibility)
+end)
+for _, p in ipairs(Players:GetPlayers()) do
+	if p.Character then watchCharacterForInvisibility(p.Character) end
+	p.CharacterAdded:Connect(watchCharacterForInvisibility)
+end
+]]></ProtectedString>
+			</Properties>
+		</Item>
+	</Item>
+
+</roblox>
